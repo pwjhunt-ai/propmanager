@@ -35,10 +35,10 @@ const db = {
 };
 
 // Map DB row → app object
-const mapProperty = r => ({ id: r.id, name: r.name, address: r.address, type: r.type, floors: r.floors, sqft: r.sqft, occupancy: r.occupancy, monthlyRent: r.monthly_rent, assetValue: r.asset_value, status: r.status, estate: r.estate, entity: r.entity, lat: r.lat||37.7, lng: r.lng||-96, leaseEscalationPct: r.lease_escalation_pct||0, leaseEscalationDate: r.lease_escalation_date||"" });
-const mapLoan = r => ({ id: r.id, propertyId: r.property_id, lender: r.lender, originalAmount: r.original_amount, balance: r.balance, interestRate: r.interest_rate, monthlyPayment: r.monthly_payment, startDate: r.start_date, maturityDate: r.maturity_date, type: r.type, status: r.status });
-const mapTenant = r => ({ id: r.id, propertyId: r.property_id, name: r.name, unit: r.unit, leaseStart: r.lease_start, leaseEnd: r.lease_end, monthlyRent: r.monthly_rent, contact: r.contact });
-const mapMaintenance = r => ({ id: r.id, propertyId: r.property_id, title: r.title, priority: r.priority, status: r.status, date: r.date, cost: r.cost, assignee: r.assignee });
+const mapProperty = r => ({ id: r.id, name: r.name, address: r.address, type: r.type, floors: +r.floors||0, sqft: +r.sqft||0, occupancy: +r.occupancy||0, monthlyRent: +r.monthly_rent||0, assetValue: +r.asset_value||0, status: r.status, estate: r.estate, entity: r.entity, lat: +r.lat||37.7, lng: +r.lng||-96, leaseEscalationPct: +r.lease_escalation_pct||0, leaseEscalationDate: r.lease_escalation_date||"" });
+const mapLoan = r => ({ id: r.id, propertyId: r.property_id, lender: r.lender, originalAmount: +r.original_amount||0, balance: +r.balance||0, interestRate: +r.interest_rate||0, monthlyPayment: +r.monthly_payment||0, startDate: r.start_date, maturityDate: r.maturity_date, type: r.type, status: r.status });
+const mapTenant = r => ({ id: r.id, propertyId: r.property_id, name: r.name, unit: r.unit, leaseStart: r.lease_start, leaseEnd: r.lease_end, monthlyRent: +r.monthly_rent||0, contact: r.contact });
+const mapMaintenance = r => ({ id: r.id, propertyId: r.property_id, title: r.title, priority: r.priority, status: r.status, date: r.date, cost: +r.cost||0, assignee: r.assignee });
 
 const initialProperties = [];
 const initialLoans = [];
@@ -199,12 +199,12 @@ function MapView({ properties, loans, onSelect, TYPE_COLORS, ESTATE_STYLES, STAT
     return true;
   });
 
-  // Albers USA projection: lat/lng → SVG (960×600 viewBox)
+  // Project lat/lng to match the STATE_PATHS coordinate system (960x580 viewBox)
   const project = (lat, lng) => {
-    // Simple equirectangular scaled to fit CONUS in the viewbox
-    const x = (lng + 130) * (880 / 65) + 40;
-    const y = (55 - lat) * (490 / 28) + 30;
-    return { x, y };
+    // Fitted to match state boundaries in the 960x580 viewBox
+    const x = (lng + 124.8) * (800 / 57) + 30;
+    const y = (49.4 - lat) * (430 / 24) + 95;
+    return { x: Math.max(20, Math.min(940, x)), y: Math.max(20, Math.min(560, y)) };
   };
 
   const statePropCount = {};
