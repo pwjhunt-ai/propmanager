@@ -631,23 +631,27 @@ function PropertyFiles({ files, setFiles }) {
 
 // Loan math helpers
 function calcFixedPayment(principal, annualRate, startDate, maturityDate) {
-  if (!principal || !annualRate || !startDate || !maturityDate) return { payment: 0, balance: principal };
+  if (!principal || !annualRate || !startDate || !maturityDate) return null;
   const r = annualRate / 100 / 12;
-  const start = new Date(startDate);
-  const end = new Date(maturityDate);
-  const totalMonths = Math.round((end - start) / (1000 * 60 * 60 * 24 * 30.44));
-  if (totalMonths <= 0 || r === 0) return { payment: 0, balance: principal };
-  const payment = Math.round(principal * (r * Math.pow(1 + r, totalMonths)) / (Math.pow(1 + r, totalMonths) - 1));
-  // Calculate current balance based on months elapsed since start
+  // Parse dates safely by adding T00:00:00 to avoid timezone shifts
+  const start = new Date(startDate + "T00:00:00");
+  const end = new Date(maturityDate + "T00:00:00");
+  // Calculate total months more accurately
+  const totalMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  if (totalMonths <= 0 || r === 0) return null;
+  // Standard amortization formula: M = P[r(1+r)^n]/[(1+r)^n-1]
+  const payment = principal * (r * Math.pow(1 + r, totalMonths)) / (Math.pow(1 + r, totalMonths) - 1);
+  // Calculate current balance: how many full months have passed since start?
   const now = new Date();
-  const monthsElapsed = Math.max(0, Math.round((now - start) / (1000 * 60 * 60 * 24 * 30.44)));
+  const monthsElapsed = Math.max(0, (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()));
   let balance = principal;
-  for (let i = 0; i < Math.min(monthsElapsed, totalMonths); i++) {
-    const interestPortion = balance * r;
-    const principalPortion = payment - interestPortion;
-    balance = Math.max(0, balance - principalPortion);
+  const monthsToRun = Math.min(monthsElapsed, totalMonths);
+  for (let i = 0; i < monthsToRun; i++) {
+    const interest = balance * r;
+    balance = balance - (payment - interest);
+    if (balance < 0) { balance = 0; break; }
   }
-  return { payment, balance: Math.round(balance) };
+  return { payment: Math.round(payment), balance: Math.round(balance), totalMonths };
 }
 
 function calcInterestOnlyPayment(principal, annualRate) {
@@ -666,8 +670,12 @@ function LoanForm({ loan, setLoan, propOpts, showPropertyField, onSave, saveLabe
       const { payment, balance } = calcInterestOnlyPayment(p, r);
       setLoan({ ...updated, monthlyPayment: String(payment), balance: String(balance) });
     } else if (updated.type === "Fixed" && p && r && updated.startDate && updated.maturityDate) {
-      const { payment, balance } = calcFixedPayment(p, r, updated.startDate, updated.maturityDate);
-      setLoan({ ...updated, monthlyPayment: String(payment), balance: String(balance) });
+      const result = calcFixedPayment(p, r, updated.startDate, updated.maturityDate);
+      if (result) {
+        setLoan({ ...updated, monthlyPayment: String(result.payment), balance: String(result.balance) });
+      } else {
+        setLoan(updated);
+      }
     } else {
       setLoan(updated);
     }
@@ -675,8 +683,9 @@ function LoanForm({ loan, setLoan, propOpts, showPropertyField, onSave, saveLabe
 
   const isInterestOnly = loan.type === "Interest Only";
   const isFixed = loan.type === "Fixed";
-  const calcedPayment = loan.monthlyPayment ? `$${Math.round(+loan.monthlyPayment).toLocaleString()} / mo` : null;
-  const calcedBalance = loan.balance ? `$${Math.round(+loan.balance).toLocaleString()}` : null;
+
+  // For fixed/IO, show calculated results as read-only highlighted fields
+  const showCalcBox = (isFixed || isInterestOnly) && +loan.monthlyPayment > 0;
 
   return (
     <div>
@@ -691,29 +700,34 @@ function LoanForm({ loan, setLoan, propOpts, showPropertyField, onSave, saveLabe
         <Field label="Maturity Date" value={loan.maturityDate||""} onChange={v=>handleCalc({...loan,maturityDate:v})} type="date" />
       </div>
 
-      {/* Auto-calculated fields — shown read-only with override option */}
-      {(isFixed || isInterestOnly) && (calcedPayment || calcedBalance) && (
-        <div style={{ background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 10, padding: "12px 16px", margin: "14px 0" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            {isInterestOnly ? "Interest Only Calculation" : "Amortization Calculation"}
+      {/* Auto-calculated results */}
+      {showCalcBox && (
+        <div style={{ background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 10, padding: "14px 16px", margin: "14px 0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            ✓ {isInterestOnly ? "Interest Only Calculation" : "Amortization Calculation"}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {calcedPayment && (
-              <div>
-                <div style={{ fontSize: 10, color: "#6366F1", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Monthly Payment</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{calcedPayment}</div>
-              </div>
-            )}
-            {calcedBalance && (
-              <div>
-                <div style={{ fontSize: 10, color: "#6366F1", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>{isInterestOnly ? "Balance (fixed)" : "Current Balance"}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{calcedBalance}</div>
-              </div>
-            )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 10, color: "#6366F1", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Monthly Payment</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>${Math.round(+loan.monthlyPayment).toLocaleString()}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "#6366F1", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>{isInterestOnly ? "Balance (never changes)" : "Current Balance"}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>${Math.round(+loan.balance).toLocaleString()}</div>
+            </div>
           </div>
           <div style={{ fontSize: 11, color: "#6366F1", marginTop: 8 }}>
-            {isInterestOnly ? "Balance never changes on interest-only loans." : "Balance calculated from start date to today based on amortization schedule."}
+            {isInterestOnly
+              ? "Monthly payment = original amount × annual rate ÷ 12. Balance is always equal to original amount."
+              : "Monthly payment and current balance auto-calculated from your inputs. Updates live as you change fields above."}
           </div>
+        </div>
+      )}
+
+      {/* Show hint if Fixed but missing fields */}
+      {isFixed && !showCalcBox && (+loan.originalAmount > 0 || +loan.interestRate > 0) && (
+        <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", margin: "12px 0", fontSize: 12, color: "#92400E" }}>
+          Fill in Original Amount, Interest Rate, Start Date, and Maturity Date to auto-calculate payment and balance.
         </div>
       )}
 
