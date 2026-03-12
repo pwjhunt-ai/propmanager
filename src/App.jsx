@@ -656,6 +656,8 @@ export default function App() {
   const [propertyFiles, setPropertyFiles] = useState({});
   const [editMode, setEditMode] = useState(false);
   const [editP, setEditP] = useState(null);
+  const [showEditLoan, setShowEditLoan] = useState(false);
+  const [editL, setEditL] = useState(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -691,6 +693,10 @@ export default function App() {
   const addLoan = async (l) => {
     const row = await db.insert("loans", { property_id: +l.propertyId, lender: l.lender, original_amount: +l.originalAmount, balance: +l.balance, interest_rate: +l.interestRate, monthly_payment: +l.monthlyPayment, start_date: l.startDate, maturity_date: l.maturityDate, type: l.type, status: l.status });
     setLoans(prev => [...prev, mapLoan(row)]);
+  };
+  const updateLoan = async (l) => {
+    await db.update("loans", l.id, { lender: l.lender, original_amount: +l.originalAmount, balance: +l.balance, interest_rate: +l.interestRate, monthly_payment: +l.monthlyPayment, start_date: l.startDate, maturity_date: l.maturityDate, type: l.type, status: l.status });
+    setLoans(prev => prev.map(x => x.id === l.id ? {...x, ...l} : x));
   };
   const addTenant = async (t) => {
     const row = await db.insert("tenants", { property_id: +t.propertyId, name: t.name, unit: t.unit, lease_start: t.leaseStart, lease_end: t.leaseEnd, monthly_rent: +t.monthlyRent, contact: t.contact });
@@ -1219,7 +1225,13 @@ export default function App() {
                 const loan = loans.find(l=>l.propertyId===sel.id);
                 return loan ? (
                   <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Loan — {loan.lender}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: "0.04em" }}>Loan — {loan.lender}</div>
+                      <button onClick={()=>{ setEditL({...loan, originalAmount: String(loan.originalAmount), balance: String(loan.balance), interestRate: String(loan.interestRate), monthlyPayment: String(loan.monthlyPayment) }); setShowEditLoan(true); }}
+                        style={{ fontSize: 12, color: "#92400E", background: "#FEF3C7", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                        ✏️ Edit Loan
+                      </button>
+                    </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, fontSize: 13 }}>
                       {[["Balance",`$${Math.round(loan.balance).toLocaleString()}`],["Original",`$${Math.round(loan.originalAmount).toLocaleString()}`],["Rate",`${loan.interestRate}% ${loan.type}`],["Monthly Pmt",`$${loan.monthlyPayment.toLocaleString()}`],["Maturity",loan.maturityDate],["Status",<Badge label={loan.status} bg={LOAN_STATUS_STYLES[loan.status]?.bg} color={LOAN_STATUS_STYLES[loan.status]?.color} />]].map(([l,v])=>(
                         <div key={l}><div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.04em" }}>{l}</div><div style={{ fontWeight: 700 }}>{v}</div></div>
@@ -1403,6 +1415,31 @@ export default function App() {
           <button onClick={()=>{if(!newL.lender||!newL.propertyId)return; addLoan(newL); setShowAddLoan(false); setNewL({propertyId:"",lender:"",originalAmount:"",balance:"",interestRate:"",monthlyPayment:"",startDate:"",maturityDate:"",type:"Fixed",status:"current"}); }}
             style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:4 }}>
             Add Loan
+          </button>
+        </Modal>
+      )}
+
+      {/* EDIT LOAN */}
+      {showEditLoan && editL && (
+        <Modal title="Edit Loan" onClose={()=>{setShowEditLoan(false);setEditL(null);}}>
+          <Field label="Lender" value={editL.lender} onChange={v=>setEditL(l=>({...l,lender:v}))} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Loan Type" value={editL.type} onChange={v=>setEditL(l=>({...l,type:v}))} options={["Fixed","Variable","Bridge","Construction"]} />
+            <Field label="Status" value={editL.status} onChange={v=>setEditL(l=>({...l,status:v}))} options={["current","watch","default"]} />
+            <Field label="Original Amount ($)" value={editL.originalAmount} onChange={v=>setEditL(l=>({...l,originalAmount:v}))} type="number" />
+            <Field label="Current Balance ($)" value={editL.balance} onChange={v=>setEditL(l=>({...l,balance:v}))} type="number" />
+            <Field label="Interest Rate (%)" value={editL.interestRate} onChange={v=>setEditL(l=>({...l,interestRate:v}))} type="number" />
+            <Field label="Monthly Payment ($)" value={editL.monthlyPayment} onChange={v=>setEditL(l=>({...l,monthlyPayment:v}))} type="number" />
+            <Field label="Start Date" value={editL.startDate||""} onChange={v=>setEditL(l=>({...l,startDate:v}))} type="date" />
+            <Field label="Maturity Date" value={editL.maturityDate||""} onChange={v=>setEditL(l=>({...l,maturityDate:v}))} type="date" />
+          </div>
+          <button onClick={async ()=>{
+            if(!editL.lender) return;
+            await updateLoan(editL);
+            setShowEditLoan(false);
+            setEditL(null);
+          }} style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:4 }}>
+            Save Loan Changes
           </button>
         </Modal>
       )}
