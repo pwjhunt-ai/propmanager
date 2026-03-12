@@ -1,6 +1,44 @@
 import { useState, useEffect } from "react";
 
-const STORAGE_KEYS = { properties: "pm:properties", loans: "pm:loans", tenants: "pm:tenants", maintenance: "pm:maintenance" };
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://syqkwicldxjlwjngfqyw.supabase.co";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5cWt3aWNsZHhqbHdqbmdmcXl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODQwOTYsImV4cCI6MjA4ODg2MDA5Nn0.kUnkO1HnXIRJQ9t0p-4T3z4k9S3lZdVd7QKPAoupl4Y";
+
+const db = {
+  async get(table) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*&order=id`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    });
+    return res.json();
+  },
+  async insert(table, row) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(row)
+    });
+    const data = await res.json();
+    return Array.isArray(data) ? data[0] : data;
+  },
+  async update(table, id, row) {
+    await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(row)
+    });
+  },
+  async delete(table, id) {
+    await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    });
+  }
+};
+
+// Map DB row → app object
+const mapProperty = r => ({ id: r.id, name: r.name, address: r.address, type: r.type, floors: r.floors, sqft: r.sqft, occupancy: r.occupancy, monthlyRent: r.monthly_rent, assetValue: r.asset_value, status: r.status, estate: r.estate, entity: r.entity, lat: r.lat||37.7, lng: r.lng||-96 });
+const mapLoan = r => ({ id: r.id, propertyId: r.property_id, lender: r.lender, originalAmount: r.original_amount, balance: r.balance, interestRate: r.interest_rate, monthlyPayment: r.monthly_payment, startDate: r.start_date, maturityDate: r.maturity_date, type: r.type, status: r.status });
+const mapTenant = r => ({ id: r.id, propertyId: r.property_id, name: r.name, unit: r.unit, leaseStart: r.lease_start, leaseEnd: r.lease_end, monthlyRent: r.monthly_rent, contact: r.contact });
+const mapMaintenance = r => ({ id: r.id, propertyId: r.property_id, title: r.title, priority: r.priority, status: r.status, date: r.date, cost: r.cost, assignee: r.assignee });
 
 const initialProperties = [];
 const initialLoans = [];
@@ -14,7 +52,6 @@ const PRIORITY_STYLES = { high: { bg: "#FEE2E2", color: "#991B1B" }, medium: { b
 const MAINT_STATUS_STYLES = { open: { bg: "#FEE2E2", color: "#991B1B" }, "in-progress": { bg: "#FEF3C7", color: "#92400E" }, scheduled: { bg: "#DBEAFE", color: "#1E40AF" }, completed: { bg: "#D1FAE5", color: "#065F46" } };
 const LOAN_STATUS_STYLES = { current: { bg: "#D1FAE5", color: "#065F46" }, watch: { bg: "#FEF3C7", color: "#92400E" }, default: { bg: "#FEE2E2", color: "#991B1B" } };
 
-function save(key, data) { try { window.storage && window.storage.set(key, JSON.stringify(data)); } catch {} }
 
 function MetricCard({ label, value, sub, accent }) {
   return (
@@ -620,29 +657,57 @@ export default function App() {
   const [editMode, setEditMode] = useState(false);
   const [editP, setEditP] = useState(null);
 
-  // Load from storage on mount
+  const [loading, setLoading] = useState(true);
+
+  // Load from Supabase on mount
   useEffect(() => {
     (async () => {
       try {
-        if (!window.storage) return;
         const [p, l, t, m] = await Promise.all([
-          window.storage.get(STORAGE_KEYS.properties),
-          window.storage.get(STORAGE_KEYS.loans),
-          window.storage.get(STORAGE_KEYS.tenants),
-          window.storage.get(STORAGE_KEYS.maintenance),
+          db.get("properties"), db.get("loans"), db.get("tenants"), db.get("maintenance")
         ]);
-        if (p) setProperties(JSON.parse(p.value));
-        if (l) setLoans(JSON.parse(l.value));
-        if (t) setTenants(JSON.parse(t.value));
-        if (m) setMaintenance(JSON.parse(m.value));
-      } catch {}
+        setProperties(p.map(mapProperty));
+        setLoans(l.map(mapLoan));
+        setTenants(t.map(mapTenant));
+        setMaintenance(m.map(mapMaintenance));
+      } catch (e) { console.error(e); }
+      setLoading(false);
     })();
   }, []);
 
-  const setAndSaveProperties = v => { const next = typeof v === "function" ? v(properties) : v; setProperties(next); save(STORAGE_KEYS.properties, next); };
-  const setAndSaveLoans = v => { const next = typeof v === "function" ? v(loans) : v; setLoans(next); save(STORAGE_KEYS.loans, next); };
-  const setAndSaveTenants = v => { const next = typeof v === "function" ? v(tenants) : v; setTenants(next); save(STORAGE_KEYS.tenants, next); };
-  const setAndSaveMaintenance = v => { const next = typeof v === "function" ? v(maintenance) : v; setMaintenance(next); save(STORAGE_KEYS.maintenance, next); };
+  // Supabase CRUD helpers
+  const addProperty = async (p) => {
+    const row = await db.insert("properties", { name: p.name, address: p.address, type: p.type, floors: +p.floors, sqft: +p.sqft, occupancy: p.status==="vacant"?0:+p.occupancy||80, monthly_rent: +p.monthlyRent, asset_value: +p.assetValue, status: p.status, estate: p.estate, entity: p.entity, lat: 37.7, lng: -96 });
+    setProperties(prev => [...prev, mapProperty(row)]);
+  };
+  const updateProperty = async (p) => {
+    await db.update("properties", p.id, { name: p.name, address: p.address, type: p.type, floors: +p.floors, sqft: +p.sqft, occupancy: +p.occupancy, monthly_rent: +p.monthlyRent, asset_value: +p.assetValue, status: p.status, estate: p.estate, entity: p.entity });
+    setProperties(prev => prev.map(x => x.id === p.id ? {...x, ...p} : x));
+  };
+  const deleteProperty = async (id) => {
+    await db.delete("properties", id);
+    setProperties(prev => prev.filter(x => x.id !== id));
+  };
+  const addLoan = async (l) => {
+    const row = await db.insert("loans", { property_id: +l.propertyId, lender: l.lender, original_amount: +l.originalAmount, balance: +l.balance, interest_rate: +l.interestRate, monthly_payment: +l.monthlyPayment, start_date: l.startDate, maturity_date: l.maturityDate, type: l.type, status: l.status });
+    setLoans(prev => [...prev, mapLoan(row)]);
+  };
+  const addTenant = async (t) => {
+    const row = await db.insert("tenants", { property_id: +t.propertyId, name: t.name, unit: t.unit, lease_start: t.leaseStart, lease_end: t.leaseEnd, monthly_rent: +t.monthlyRent, contact: t.contact });
+    setTenants(prev => [...prev, mapTenant(row)]);
+  };
+  const deleteTenant = async (id) => {
+    await db.delete("tenants", id);
+    setTenants(prev => prev.filter(x => x.id !== id));
+  };
+  const addMaintenance = async (m) => {
+    const row = await db.insert("maintenance", { property_id: +m.propertyId, title: m.title, priority: m.priority, status: "open", date: m.date, cost: +m.cost, assignee: m.assignee });
+    setMaintenance(prev => [...prev, mapMaintenance(row)]);
+  };
+  const updateMaintenanceStatus = async (id, status) => {
+    await db.update("maintenance", id, { status });
+    setMaintenance(prev => prev.map(x => x.id === id ? {...x, status} : x));
+  };
 
   const totalRevenue = properties.reduce((s, p) => s + p.monthlyRent, 0);
   const totalAssetValue = properties.reduce((s, p) => s + (p.assetValue || 0), 0);
@@ -701,36 +766,29 @@ export default function App() {
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Email</label>
-              <input
-                type="email"
-                value={loginEmail}
-                onChange={e => setLoginEmail(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleLogin()}
-                placeholder="you@example.com"
-                style={{ width: "100%", padding: "11px 14px", border: "1.5px solid #D1D5DB", borderRadius: 8, fontSize: 14, outline: "none", fontFamily: "'DM Sans', sans-serif" }}
-              />
+              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="you@example.com"
+                style={{ width: "100%", padding: "11px 14px", border: "1.5px solid #D1D5DB", borderRadius: 8, fontSize: 14, outline: "none", fontFamily: "'DM Sans', sans-serif" }} />
             </div>
             <div style={{ marginBottom: 24 }}>
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Password</label>
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={e => setLoginPassword(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleLogin()}
-                placeholder="••••••••"
-                style={{ width: "100%", padding: "11px 14px", border: "1.5px solid #D1D5DB", borderRadius: 8, fontSize: 14, outline: "none", fontFamily: "'DM Sans', sans-serif" }}
-              />
+              <input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="••••••••"
+                style={{ width: "100%", padding: "11px 14px", border: "1.5px solid #D1D5DB", borderRadius: 8, fontSize: 14, outline: "none", fontFamily: "'DM Sans', sans-serif" }} />
             </div>
-            {loginError && (
-              <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#DC2626", marginBottom: 16 }}>
-                {loginError}
-              </div>
-            )}
-            <button onClick={handleLogin}
-              style={{ width: "100%", padding: "13px", background: "#4F46E5", color: "#fff", border: "none", borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-              Sign In
-            </button>
+            {loginError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#DC2626", marginBottom: 16 }}>{loginError}</div>}
+            <button onClick={handleLogin} style={{ width: "100%", padding: "13px", background: "#4F46E5", color: "#fff", border: "none", borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>Sign In</button>
           </div>
+        </div>
+      </>
+    );
+  }
+
+  if (loading) {
+    return (
+      <>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700&display=swap'); * { box-sizing: border-box; margin: 0; padding: 0; }`}</style>
+        <div style={{ minHeight: "100vh", background: "#0F172A", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 28, color: "#F9FAFB" }}>PropManager</div>
+          <div style={{ fontSize: 14, color: "#6B7280" }}>Loading your portfolio...</div>
         </div>
       </>
     );
@@ -929,7 +987,7 @@ export default function App() {
                           <td style={{ padding: "14px 16px" }}><Badge label={days<90?"Expiring Soon":"Current"} bg={days<90?"#FEE2E2":"#D1FAE5"} color={days<90?"#991B1B":"#065F46"} /></td>
                           <td style={{ padding: "14px 16px", fontSize: 12, color: "#4F46E5" }}>{t.contact}</td>
                           <td style={{ padding: "14px 16px" }}>
-                            <button onClick={()=>{if(window.confirm(`Remove "${t.name}"?`)) setAndSaveTenants(prev=>prev.filter(x=>x.id!==t.id));}}
+                            <button onClick={()=>{if(window.confirm(`Remove "${t.name}"?`)) deleteTenant(t.id);}}
                               style={{ fontSize: 12, color: "#EF4444", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Remove</button>
                           </td>
                         </tr>
@@ -975,7 +1033,7 @@ export default function App() {
                             <td style={{ padding: "14px 16px", fontWeight: 600, color: "#111827" }}>{m.cost>0?`$${m.cost.toLocaleString()}`:"TBD"}</td>
                             <td style={{ padding: "14px 16px" }}><Badge label={m.status.replace("-"," ")} bg={MAINT_STATUS_STYLES[m.status].bg} color={MAINT_STATUS_STYLES[m.status].color} /></td>
                             <td style={{ padding: "14px 16px" }}>
-                              <select value={m.status} onChange={e=>{const s=e.target.value; setAndSaveMaintenance(prev=>prev.map(x=>x.id===m.id?{...x,status:s}:x));}}
+                              <select value={m.status} onChange={e=>updateMaintenanceStatus(m.id, e.target.value)}
                                 style={{ fontSize: 12, padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, outline: "none", cursor: "pointer", background: "#fff" }}>
                                 {["open","in-progress","scheduled","completed"].map(s=><option key={s} value={s}>{s}</option>)}
                               </select>
@@ -1179,7 +1237,7 @@ export default function App() {
                         <div style={{ fontWeight: 600, color: "#111827", fontSize: 13 }}>{t.name} · {t.unit}</div>
                         <div style={{ color: "#6B7280", fontSize: 12, marginTop: 2 }}>{t.leaseStart} → {t.leaseEnd} · ${t.monthlyRent.toLocaleString()}/mo</div>
                       </div>
-                      <button onClick={()=>{if(window.confirm(`Remove "${t.name}"?`)) setAndSaveTenants(prev=>prev.filter(x=>x.id!==t.id));}}
+                      <button onClick={()=>{if(window.confirm(`Remove "${t.name}"?`)) deleteTenant(t.id);}}
                         style={{ fontSize: 12, color: "#EF4444", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Remove</button>
                     </div>
                   ))}
@@ -1214,7 +1272,7 @@ export default function App() {
                   style={{ padding: "11px", background: "#EEF2FF", border: "1.5px solid #C7D2FE", color: "#4F46E5", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
                   ✏️ Edit Property
                 </button>
-                <button onClick={()=>{if(window.confirm(`Permanently remove "${sel.name}"?`)){setAndSaveProperties(prev=>prev.filter(x=>x.id!==sel.id));setSel(null);}}}
+                <button onClick={()=>{if(window.confirm(`Permanently remove "${sel.name}"?`)){deleteProperty(sel.id);setSel(null);}}}
                   style={{ padding: "11px", background: "#FEF2F2", border: "1.5px solid #FECACA", color: "#DC2626", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
                   🗑 Remove Property
                 </button>
@@ -1242,7 +1300,7 @@ export default function App() {
                 </button>
                 <button onClick={()=>{
                   const updated = {...editP, floors: +editP.floors, sqft: +editP.sqft, monthlyRent: +editP.monthlyRent, assetValue: +editP.assetValue, occupancy: +editP.occupancy};
-                  setAndSaveProperties(prev=>prev.map(p=>p.id===updated.id?updated:p));
+                  await updateProperty(updated);
                   setSel(updated);
                   setEditMode(false);
                   setEditP(null);
@@ -1271,7 +1329,7 @@ export default function App() {
             <Field label="Floors" value={newP.floors} onChange={v=>setNewP(p=>({...p,floors:v}))} type="number" />
             <Field label="Sq Ft" value={newP.sqft} onChange={v=>setNewP(p=>({...p,sqft:v}))} type="number" />
           </div>
-          <button onClick={()=>{if(!newP.name||!newP.address)return; setAndSaveProperties(prev=>[...prev,{...newP,id:Date.now(),floors:+newP.floors,sqft:+newP.sqft,monthlyRent:+newP.monthlyRent,assetValue:+newP.assetValue,occupancy:newP.status==="vacant"?0:80,lat:37.7,lng:-96.0}]); setShowAddProp(false); setNewP({name:"",address:"",type:"Office",floors:"",sqft:"",monthlyRent:"",assetValue:"",status:"active",estate:"in-estate",entity:""}); }}
+          <button onClick={()=>{if(!newP.name||!newP.address)return; addProperty(newP); setShowAddProp(false); setNewP({name:"",address:"",type:"Office",floors:"",sqft:"",monthlyRent:"",assetValue:"",status:"active",estate:"in-estate",entity:""}); }}
             style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:4 }}>
             Add Property
           </button>
@@ -1290,7 +1348,7 @@ export default function App() {
           </div>
           <Field label="Monthly Rent ($)" value={newT.monthlyRent} onChange={v=>setNewT(t=>({...t,monthlyRent:v}))} type="number" />
           <Field label="Contact Email" value={newT.contact} onChange={v=>setNewT(t=>({...t,contact:v}))} type="email" />
-          <button onClick={()=>{if(!newT.name)return; setAndSaveTenants(prev=>[...prev,{...newT,id:Date.now(),propertyId:+newT.propertyId,monthlyRent:+newT.monthlyRent}]); setShowAddTenant(false); setNewT({propertyId:"",name:"",unit:"",leaseStart:"",leaseEnd:"",monthlyRent:"",contact:""}); }}
+          <button onClick={()=>{if(!newT.name)return; addTenant(newT); setShowAddTenant(false); setNewT({propertyId:"",name:"",unit:"",leaseStart:"",leaseEnd:"",monthlyRent:"",contact:""}); }}
             style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif" }}>
             Add Tenant
           </button>
@@ -1308,7 +1366,7 @@ export default function App() {
           </div>
           <Field label="Assignee / Contractor" value={newM.assignee} onChange={v=>setNewM(m=>({...m,assignee:v}))} />
           <Field label="Estimated Cost ($)" value={newM.cost} onChange={v=>setNewM(m=>({...m,cost:v}))} type="number" />
-          <button onClick={()=>{if(!newM.title)return; setAndSaveMaintenance(prev=>[...prev,{...newM,id:Date.now(),propertyId:+newM.propertyId,cost:+newM.cost,status:"open"}]); setShowAddMaint(false); setNewM({propertyId:"",title:"",priority:"medium",assignee:"",cost:"",date:""}); }}
+          <button onClick={()=>{if(!newM.title)return; addMaintenance(newM); setShowAddMaint(false); setNewM({propertyId:"",title:"",priority:"medium",assignee:"",cost:"",date:""}); }}
             style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif" }}>
             Log Request
           </button>
@@ -1330,7 +1388,7 @@ export default function App() {
             <Field label="Start Date" value={newL.startDate} onChange={v=>setNewL(l=>({...l,startDate:v}))} type="date" />
             <Field label="Maturity Date" value={newL.maturityDate} onChange={v=>setNewL(l=>({...l,maturityDate:v}))} type="date" />
           </div>
-          <button onClick={()=>{if(!newL.lender||!newL.propertyId)return; setAndSaveLoans(prev=>[...prev,{...newL,id:Date.now(),propertyId:+newL.propertyId,originalAmount:+newL.originalAmount,balance:+newL.balance,interestRate:+newL.interestRate,monthlyPayment:+newL.monthlyPayment}]); setShowAddLoan(false); setNewL({propertyId:"",lender:"",originalAmount:"",balance:"",interestRate:"",monthlyPayment:"",startDate:"",maturityDate:"",type:"Fixed",status:"current"}); }}
+          <button onClick={()=>{if(!newL.lender||!newL.propertyId)return; addLoan(newL); setShowAddLoan(false); setNewL({propertyId:"",lender:"",originalAmount:"",balance:"",interestRate:"",monthlyPayment:"",startDate:"",maturityDate:"",type:"Fixed",status:"current"}); }}
             style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:4 }}>
             Add Loan
           </button>
