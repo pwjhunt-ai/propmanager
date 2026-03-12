@@ -597,6 +597,10 @@ export default function App() {
   const [loans, setLoans] = useState(initialLoans);
   const [tenants, setTenants] = useState(initialTenants);
   const [maintenance, setMaintenance] = useState(initialMaintenance);
+  const [loggedIn, setLoggedIn] = useState(() => sessionStorage.getItem("pm_auth") === "true");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [tab, setTab] = useState("dashboard");
   const [sel, setSel] = useState(null);
   const [showAddProp, setShowAddProp] = useState(false);
@@ -612,7 +616,9 @@ export default function App() {
   const [newT, setNewT] = useState({ propertyId: "", name: "", unit: "", leaseStart: "", leaseEnd: "", monthlyRent: "", contact: "" });
   const [newM, setNewM] = useState({ propertyId: "", title: "", priority: "medium", assignee: "", cost: "", date: "" });
   const [newL, setNewL] = useState({ propertyId: "", lender: "", originalAmount: "", balance: "", interestRate: "", monthlyPayment: "", startDate: "", maturityDate: "", type: "Fixed", status: "current" });
-  const [propertyFiles, setPropertyFiles] = useState({}); // { [propertyId]: [...files] }
+  const [propertyFiles, setPropertyFiles] = useState({});
+  const [editMode, setEditMode] = useState(false);
+  const [editP, setEditP] = useState(null);
 
   // Load from storage on mount
   useEffect(() => {
@@ -667,6 +673,69 @@ export default function App() {
 
   const btnStyle = { padding: "9px 18px", background: "#fff", border: "1.5px solid #4F46E5", color: "#4F46E5", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" };
 
+  const handleLogin = () => {
+    const validEmail = import.meta.env.VITE_LOGIN_EMAIL || "richard@stonecrusherdev.com";
+    const validPassword = import.meta.env.VITE_LOGIN_PASSWORD || "Electric1";
+    if (loginEmail.trim() === validEmail && loginPassword === validPassword) {
+      sessionStorage.setItem("pm_auth", "true");
+      setLoggedIn(true);
+      setLoginError("");
+    } else {
+      setLoginError("Incorrect email or password.");
+    }
+  };
+
+  if (!loggedIn) {
+    return (
+      <>
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700&display=swap');
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'DM Sans', sans-serif; background: #F8F9FA; }
+        `}</style>
+        <div style={{ minHeight: "100vh", background: "#0F172A", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: "48px 40px", width: 400, boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}>
+            <div style={{ textAlign: "center", marginBottom: 32 }}>
+              <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 28, color: "#111827", marginBottom: 6 }}>PropManager</div>
+              <div style={{ fontSize: 13, color: "#9CA3AF" }}>Sign in to your portfolio</div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Email</label>
+              <input
+                type="email"
+                value={loginEmail}
+                onChange={e => setLoginEmail(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleLogin()}
+                placeholder="you@example.com"
+                style={{ width: "100%", padding: "11px 14px", border: "1.5px solid #D1D5DB", borderRadius: 8, fontSize: 14, outline: "none", fontFamily: "'DM Sans', sans-serif" }}
+              />
+            </div>
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Password</label>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={e => setLoginPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleLogin()}
+                placeholder="••••••••"
+                style={{ width: "100%", padding: "11px 14px", border: "1.5px solid #D1D5DB", borderRadius: 8, fontSize: 14, outline: "none", fontFamily: "'DM Sans', sans-serif" }}
+              />
+            </div>
+            {loginError && (
+              <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#DC2626", marginBottom: 16 }}>
+                {loginError}
+              </div>
+            )}
+            <button onClick={handleLogin}
+              style={{ width: "100%", padding: "13px", background: "#4F46E5", color: "#fff", border: "none", borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+              Sign In
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <style>{`
@@ -700,6 +769,10 @@ export default function App() {
           <div style={{ padding: "16px 20px", borderTop: "1px solid #1F2937" }}>
             <div style={{ fontSize: 12, color: "#6B7280" }}>{properties.length} Properties</div>
             <div style={{ fontSize: 12, color: "#10B981", fontWeight: 600, marginTop: 2 }}>${(totalRevenue / 1000000).toFixed(2)}M / month</div>
+            <button onClick={() => { sessionStorage.removeItem("pm_auth"); setLoggedIn(false); }}
+              style={{ marginTop: 10, width: "100%", padding: "7px", background: "transparent", border: "1px solid #374151", color: "#6B7280", borderRadius: 6, fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+              Sign Out
+            </button>
           </div>
         </div>
 
@@ -1059,87 +1132,127 @@ export default function App() {
 
       {/* PROPERTY DETAIL MODAL */}
       {sel && (
-        <Modal title={sel.name} onClose={()=>setSel(null)}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
-            {[
-              ["Type", <Badge label={sel.type} bg={TYPE_COLORS[sel.type]+"20"} color={TYPE_COLORS[sel.type]} />],
-              ["Status", <Badge label={STATUS_STYLES[sel.status].label} bg={STATUS_STYLES[sel.status].bg} color={STATUS_STYLES[sel.status].color} />],
-              ["Estate", <Badge label={ESTATE_STYLES[sel.estate]?.label} bg={ESTATE_STYLES[sel.estate]?.bg} color={ESTATE_STYLES[sel.estate]?.color} />],
-              ["Owning Entity", sel.entity||"—"],
-              ["Size", `${sel.sqft.toLocaleString()} sqft`],
-              ["Floors", sel.floors],
-              ["Occupancy", `${sel.occupancy}%`],
-              ["Monthly Rent", sel.monthlyRent>0?`$${sel.monthlyRent.toLocaleString()}`:"Vacant"],
-              ["Asset Value", sel.assetValue>0?`$${(sel.assetValue/1000000).toFixed(2)}M`:"—"],
-            ].map(([label,val])=>(
-              <div key={label} style={{ background: "#F9FAFB", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{val}</div>
+        <Modal title={editMode ? `Edit — ${sel.name}` : sel.name} onClose={()=>{setSel(null);setEditMode(false);setEditP(null);}}>
+          {!editMode ? (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+                {[
+                  ["Type", <Badge label={sel.type} bg={TYPE_COLORS[sel.type]+"20"} color={TYPE_COLORS[sel.type]} />],
+                  ["Status", <Badge label={STATUS_STYLES[sel.status].label} bg={STATUS_STYLES[sel.status].bg} color={STATUS_STYLES[sel.status].color} />],
+                  ["Estate", <Badge label={ESTATE_STYLES[sel.estate]?.label} bg={ESTATE_STYLES[sel.estate]?.bg} color={ESTATE_STYLES[sel.estate]?.color} />],
+                  ["Owning Entity", sel.entity||"—"],
+                  ["Size", `${sel.sqft.toLocaleString()} sqft`],
+                  ["Floors", sel.floors],
+                  ["Occupancy", `${sel.occupancy}%`],
+                  ["Monthly Rent", sel.monthlyRent>0?`$${sel.monthlyRent.toLocaleString()}`:"Vacant"],
+                  ["Asset Value", sel.assetValue>0?`$${(sel.assetValue/1000000).toFixed(2)}M`:"—"],
+                ].map(([label,val])=>(
+                  <div key={label} style={{ background: "#F9FAFB", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{val}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>📍 {sel.address}</div>
+              <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>📍 {sel.address}</div>
 
-          {(() => {
-            const loan = loans.find(l=>l.propertyId===sel.id);
-            return loan ? (
-              <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Loan — {loan.lender}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, fontSize: 13 }}>
-                  {[["Balance",`$${(loan.balance/1000000).toFixed(2)}M`],["Original",`$${(loan.originalAmount/1000000).toFixed(2)}M`],["Rate",`${loan.interestRate}% ${loan.type}`],["Monthly Pmt",`$${loan.monthlyPayment.toLocaleString()}`],["Maturity",loan.maturityDate],["Status",<Badge label={loan.status} bg={LOAN_STATUS_STYLES[loan.status]?.bg} color={LOAN_STATUS_STYLES[loan.status]?.color} />]].map(([l,v])=>(
-                    <div key={l}><div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.04em" }}>{l}</div><div style={{ fontWeight: 700 }}>{v}</div></div>
+              {(() => {
+                const loan = loans.find(l=>l.propertyId===sel.id);
+                return loan ? (
+                  <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Loan — {loan.lender}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, fontSize: 13 }}>
+                      {[["Balance",`$${(loan.balance/1000000).toFixed(2)}M`],["Original",`$${(loan.originalAmount/1000000).toFixed(2)}M`],["Rate",`${loan.interestRate}% ${loan.type}`],["Monthly Pmt",`$${loan.monthlyPayment.toLocaleString()}`],["Maturity",loan.maturityDate],["Status",<Badge label={loan.status} bg={LOAN_STATUS_STYLES[loan.status]?.bg} color={LOAN_STATUS_STYLES[loan.status]?.color} />]].map(([l,v])=>(
+                        <div key={l}><div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.04em" }}>{l}</div><div style={{ fontWeight: 700 }}>{v}</div></div>
+                      ))}
+                    </div>
+                  </div>
+                ) : <div style={{ background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#9CA3AF" }}>No loan on record.</div>;
+              })()}
+
+              <div style={{ marginBottom: 16 }}>
+                <h4 style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 10 }}>Tenants</h4>
+                {tenants.filter(t=>t.propertyId===sel.id).length===0
+                  ? <div style={{ fontSize: 13, color: "#9CA3AF" }}>No tenants on record.</div>
+                  : tenants.filter(t=>t.propertyId===sel.id).map(t=>(
+                    <div key={t.id} style={{ background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontWeight: 600, color: "#111827", fontSize: 13 }}>{t.name} · {t.unit}</div>
+                        <div style={{ color: "#6B7280", fontSize: 12, marginTop: 2 }}>{t.leaseStart} → {t.leaseEnd} · ${t.monthlyRent.toLocaleString()}/mo</div>
+                      </div>
+                      <button onClick={()=>{if(window.confirm(`Remove "${t.name}"?`)) setAndSaveTenants(prev=>prev.filter(x=>x.id!==t.id));}}
+                        style={{ fontSize: 12, color: "#EF4444", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Remove</button>
+                    </div>
                   ))}
-                </div>
               </div>
-            ) : <div style={{ background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#9CA3AF" }}>No loan on record.</div>;
-          })()}
 
-          <div style={{ marginBottom: 16 }}>
-            <h4 style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 10 }}>Tenants</h4>
-            {tenants.filter(t=>t.propertyId===sel.id).length===0
-              ? <div style={{ fontSize: 13, color: "#9CA3AF" }}>No tenants on record.</div>
-              : tenants.filter(t=>t.propertyId===sel.id).map(t=>(
-                <div key={t.id} style={{ background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontWeight: 600, color: "#111827", fontSize: 13 }}>{t.name} · {t.unit}</div>
-                    <div style={{ color: "#6B7280", fontSize: 12, marginTop: 2 }}>{t.leaseStart} → {t.leaseEnd} · ${t.monthlyRent.toLocaleString()}/mo</div>
-                  </div>
-                  <button onClick={()=>{if(window.confirm(`Remove "${t.name}"?`)) setAndSaveTenants(prev=>prev.filter(x=>x.id!==t.id));}}
-                    style={{ fontSize: 12, color: "#EF4444", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Remove</button>
-                </div>
-              ))}
-          </div>
+              <div style={{ marginBottom: 16 }}>
+                <h4 style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 10 }}>Maintenance</h4>
+                {maintenance.filter(m=>m.propertyId===sel.id).length===0
+                  ? <div style={{ fontSize: 13, color: "#9CA3AF" }}>No maintenance requests.</div>
+                  : maintenance.filter(m=>m.propertyId===sel.id).map(m=>(
+                    <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #F3F4F6" }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{m.title}</div>
+                        <div style={{ fontSize: 11, color: "#9CA3AF" }}>${m.cost.toLocaleString()} · {m.assignee}</div>
+                      </div>
+                      <Badge label={m.status} bg={MAINT_STATUS_STYLES[m.status].bg} color={MAINT_STATUS_STYLES[m.status].color} />
+                    </div>
+                  ))}
+              </div>
 
-          <div style={{ marginBottom: 16 }}>
-            <h4 style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 10 }}>Maintenance</h4>
-            {maintenance.filter(m=>m.propertyId===sel.id).length===0
-              ? <div style={{ fontSize: 13, color: "#9CA3AF" }}>No maintenance requests.</div>
-              : maintenance.filter(m=>m.propertyId===sel.id).map(m=>(
-                <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #F3F4F6" }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{m.title}</div>
-                    <div style={{ fontSize: 11, color: "#9CA3AF" }}>${m.cost.toLocaleString()} · {m.assignee}</div>
-                  </div>
-                  <Badge label={m.status} bg={MAINT_STATUS_STYLES[m.status].bg} color={MAINT_STATUS_STYLES[m.status].color} />
-                </div>
-              ))}
-          </div>
+              <PropertyFiles
+                files={propertyFiles[sel.id] || []}
+                setFiles={updater => setPropertyFiles(prev => {
+                  const cur = prev[sel.id] || [];
+                  const next = typeof updater === "function" ? updater(cur) : updater;
+                  return { ...prev, [sel.id]: next };
+                })}
+              />
 
-          <PropertyFiles
-            files={propertyFiles[sel.id] || []}
-            setFiles={updater => setPropertyFiles(prev => {
-              const cur = prev[sel.id] || [];
-              const next = typeof updater === "function" ? updater(cur) : updater;
-              return { ...prev, [sel.id]: next };
-            })}
-          />
-
-          <div style={{ paddingTop: 20, borderTop: "1px solid #F3F4F6" }}>
-            <button onClick={()=>{if(window.confirm(`Permanently remove "${sel.name}"?`)){setAndSaveProperties(prev=>prev.filter(x=>x.id!==sel.id));setSel(null);}}}
-              style={{ width: "100%", padding: "11px", background: "#FEF2F2", border: "1.5px solid #FECACA", color: "#DC2626", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-              🗑 Remove Property
-            </button>
-          </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, paddingTop: 20, borderTop: "1px solid #F3F4F6" }}>
+                <button onClick={()=>{ setEditP({...sel, floors: String(sel.floors), sqft: String(sel.sqft), monthlyRent: String(sel.monthlyRent), assetValue: String(sel.assetValue||""), occupancy: String(sel.occupancy) }); setEditMode(true); }}
+                  style={{ padding: "11px", background: "#EEF2FF", border: "1.5px solid #C7D2FE", color: "#4F46E5", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                  ✏️ Edit Property
+                </button>
+                <button onClick={()=>{if(window.confirm(`Permanently remove "${sel.name}"?`)){setAndSaveProperties(prev=>prev.filter(x=>x.id!==sel.id));setSel(null);}}}
+                  style={{ padding: "11px", background: "#FEF2F2", border: "1.5px solid #FECACA", color: "#DC2626", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                  🗑 Remove Property
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Field label="Property Name" value={editP.name} onChange={v=>setEditP(p=>({...p,name:v}))} />
+              <Field label="Address" value={editP.address} onChange={v=>setEditP(p=>({...p,address:v}))} />
+              <Field label="Owning Entity" value={editP.entity} onChange={v=>setEditP(p=>({...p,entity:v}))} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Field label="Type" value={editP.type} onChange={v=>setEditP(p=>({...p,type:v}))} options={["Office","Retail","Industrial","Medical"]} />
+                <Field label="Status" value={editP.status} onChange={v=>setEditP(p=>({...p,status:v}))} options={["active","partial","vacant"]} />
+                <Field label="Estate" value={editP.estate} onChange={v=>setEditP(p=>({...p,estate:v}))} options={[{v:"in-estate",l:"In Estate"},{v:"out-of-estate",l:"Out of Estate"}]} />
+                <Field label="Occupancy (%)" value={editP.occupancy} onChange={v=>setEditP(p=>({...p,occupancy:v}))} type="number" />
+                <Field label="Monthly Rent ($)" value={editP.monthlyRent} onChange={v=>setEditP(p=>({...p,monthlyRent:v}))} type="number" />
+                <Field label="Asset Value ($)" value={editP.assetValue} onChange={v=>setEditP(p=>({...p,assetValue:v}))} type="number" />
+                <Field label="Floors" value={editP.floors} onChange={v=>setEditP(p=>({...p,floors:v}))} type="number" />
+                <Field label="Sq Ft" value={editP.sqft} onChange={v=>setEditP(p=>({...p,sqft:v}))} type="number" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+                <button onClick={()=>{setEditMode(false);setEditP(null);}}
+                  style={{ padding: "11px", background: "#F9FAFB", border: "1.5px solid #E5E7EB", color: "#374151", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                  Cancel
+                </button>
+                <button onClick={()=>{
+                  const updated = {...editP, floors: +editP.floors, sqft: +editP.sqft, monthlyRent: +editP.monthlyRent, assetValue: +editP.assetValue, occupancy: +editP.occupancy};
+                  setAndSaveProperties(prev=>prev.map(p=>p.id===updated.id?updated:p));
+                  setSel(updated);
+                  setEditMode(false);
+                  setEditP(null);
+                }}
+                  style={{ padding: "11px", background: "#4F46E5", border: "none", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                  Save Changes
+                </button>
+              </div>
+            </>
+          )}
         </Modal>
       )}
 
