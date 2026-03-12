@@ -35,7 +35,7 @@ const db = {
 };
 
 // Map DB row → app object
-const mapProperty = r => ({ id: r.id, name: r.name, address: r.address, type: r.type, floors: r.floors, sqft: r.sqft, occupancy: r.occupancy, monthlyRent: r.monthly_rent, assetValue: r.asset_value, status: r.status, estate: r.estate, entity: r.entity, lat: r.lat||37.7, lng: r.lng||-96 });
+const mapProperty = r => ({ id: r.id, name: r.name, address: r.address, type: r.type, floors: r.floors, sqft: r.sqft, occupancy: r.occupancy, monthlyRent: r.monthly_rent, assetValue: r.asset_value, status: r.status, estate: r.estate, entity: r.entity, lat: r.lat||37.7, lng: r.lng||-96, leaseEscalationPct: r.lease_escalation_pct||0, leaseEscalationDate: r.lease_escalation_date||"" });
 const mapLoan = r => ({ id: r.id, propertyId: r.property_id, lender: r.lender, originalAmount: r.original_amount, balance: r.balance, interestRate: r.interest_rate, monthlyPayment: r.monthly_payment, startDate: r.start_date, maturityDate: r.maturity_date, type: r.type, status: r.status });
 const mapTenant = r => ({ id: r.id, propertyId: r.property_id, name: r.name, unit: r.unit, leaseStart: r.lease_start, leaseEnd: r.lease_end, monthlyRent: r.monthly_rent, contact: r.contact });
 const mapMaintenance = r => ({ id: r.id, propertyId: r.property_id, title: r.title, priority: r.priority, status: r.status, date: r.date, cost: r.cost, assignee: r.assignee });
@@ -249,7 +249,7 @@ function MapView({ properties, loans, onSelect, TYPE_COLORS, ESTATE_STYLES, STAT
         <div style={{ position: "absolute", top: 14, right: 14, zIndex: 20, display: "flex", gap: 8 }}>
           {[
             ["Properties", visibleProps.length],
-            ["Revenue", "$" + (totalRevShown / 1e6).toFixed(1) + "M"],
+            ["Revenue", "$" + Math.round(totalRevShown ).toLocaleString()],
             ["Avg Occ.", avgOccShown + "%"],
           ].map(([l, v]) => (
             <div key={l} style={{ background: "rgba(255,255,255,0.07)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "6px 12px", textAlign: "center" }}>
@@ -451,7 +451,7 @@ function MapView({ properties, loans, onSelect, TYPE_COLORS, ESTATE_STYLES, STAT
                 <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
                   <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Loan — {loan.lender}</div>
                   <div style={{ display: "flex", gap: 16 }}>
-                    <div><div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Balance</div><div style={{ fontSize: 12, fontWeight: 600, color: "#EF4444" }}>${(loan.balance / 1e6).toFixed(1)}M</div></div>
+                    <div><div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Balance</div><div style={{ fontSize: 12, fontWeight: 600, color: "#EF4444" }}>${Math.round(loan.balance ).toLocaleString()}</div></div>
                     <div><div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Rate</div><div style={{ fontSize: 12, fontWeight: 600, color: "#F9FAFB" }}>{loan.interestRate}%</div></div>
                     <div><div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Monthly</div><div style={{ fontSize: 12, fontWeight: 600, color: "#F9FAFB" }}>${loan.monthlyPayment.toLocaleString()}</div></div>
                   </div>
@@ -485,7 +485,7 @@ function MapView({ properties, loans, onSelect, TYPE_COLORS, ESTATE_STYLES, STAT
         <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, flex: 1, overflow: "auto", minHeight: 0 }}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid #F3F4F6", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
             <span style={{ fontWeight: 700, fontSize: 13, color: "#111827" }}>{visibleProps.length} Properties</span>
-            <span style={{ fontSize: 11, color: "#9CA3AF" }}>${(totalRevShown / 1e6).toFixed(2)}M / mo</span>
+            <span style={{ fontSize: 11, color: "#9CA3AF" }}>${Math.round(totalRevShown ).toLocaleString()} / mo</span>
           </div>
           {visibleProps.map(p => {
             const loan = loans.find(l => l.propertyId === p.id);
@@ -519,7 +519,7 @@ function MapView({ properties, loans, onSelect, TYPE_COLORS, ESTATE_STYLES, STAT
                     <div style={{ width: p.occupancy + "%", height: "100%", background: occColor, borderRadius: 99, transition: "width 0.3s" }} />
                   </div>
                   <span style={{ fontSize: 10, fontWeight: 700, color: occColor, minWidth: 28, textAlign: "right" }}>{p.occupancy}%</span>
-                  {loan && <span style={{ fontSize: 9, color: "#D1D5DB", flexShrink: 0 }}>🏦 {(loan.balance / 1e6).toFixed(1)}M</span>}
+                  {loan && <span style={{ fontSize: 9, color: "#D1D5DB", flexShrink: 0 }}>🏦 {Math.round(loan.balance ).toLocaleString()}</span>}
                 </div>
               </div>
             );
@@ -649,7 +649,7 @@ export default function App() {
   const [fEstate, setFEstate] = useState("all");
   const [search, setSearch] = useState("");
   const [fView, setFView] = useState("overview");
-  const [newP, setNewP] = useState({ name: "", address: "", type: "Office", floors: "", sqft: "", monthlyRent: "", assetValue: "", status: "active", estate: "in-estate", entity: "" });
+  const [newP, setNewP] = useState({ name: "", address: "", type: "Office", floors: "", sqft: "", monthlyRent: "", assetValue: "", status: "active", estate: "in-estate", entity: "", leaseEscalationPct: "", leaseEscalationDate: "" });
   const [newT, setNewT] = useState({ propertyId: "", name: "", unit: "", leaseStart: "", leaseEnd: "", monthlyRent: "", contact: "" });
   const [newM, setNewM] = useState({ propertyId: "", title: "", priority: "medium", assignee: "", cost: "", date: "" });
   const [newL, setNewL] = useState({ propertyId: "", lender: "", originalAmount: "", balance: "", interestRate: "", monthlyPayment: "", startDate: "", maturityDate: "", type: "Fixed", status: "current" });
@@ -677,11 +677,11 @@ export default function App() {
 
   // Supabase CRUD helpers
   const addProperty = async (p) => {
-    const row = await db.insert("properties", { name: p.name, address: p.address, type: p.type, floors: +p.floors, sqft: +p.sqft, occupancy: p.status==="vacant"?0:+p.occupancy||80, monthly_rent: +p.monthlyRent, asset_value: +p.assetValue, status: p.status, estate: p.estate, entity: p.entity, lat: 37.7, lng: -96 });
+    const row = await db.insert("properties", { name: p.name, address: p.address, type: p.type, floors: +p.floors, sqft: +p.sqft, occupancy: p.status==="vacant"?0:+p.occupancy||80, monthly_rent: +p.monthlyRent, asset_value: +p.assetValue, status: p.status, estate: p.estate, entity: p.entity, lat: 37.7, lng: -96, lease_escalation_pct: +p.leaseEscalationPct||0, lease_escalation_date: p.leaseEscalationDate||null });
     setProperties(prev => [...prev, mapProperty(row)]);
   };
   const updateProperty = async (p) => {
-    await db.update("properties", p.id, { name: p.name, address: p.address, type: p.type, floors: +p.floors, sqft: +p.sqft, occupancy: +p.occupancy, monthly_rent: +p.monthlyRent, asset_value: +p.assetValue, status: p.status, estate: p.estate, entity: p.entity });
+    await db.update("properties", p.id, { name: p.name, address: p.address, type: p.type, floors: +p.floors, sqft: +p.sqft, occupancy: +p.occupancy, monthly_rent: +p.monthlyRent, asset_value: +p.assetValue, status: p.status, estate: p.estate, entity: p.entity, lease_escalation_pct: +p.leaseEscalationPct||0, lease_escalation_date: p.leaseEscalationDate||null });
     setProperties(prev => prev.map(x => x.id === p.id ? {...x, ...p} : x));
   };
   const deleteProperty = async (id) => {
@@ -826,7 +826,7 @@ export default function App() {
           </nav>
           <div style={{ padding: "16px 20px", borderTop: "1px solid #1F2937" }}>
             <div style={{ fontSize: 12, color: "#6B7280" }}>{properties.length} Properties</div>
-            <div style={{ fontSize: 12, color: "#10B981", fontWeight: 600, marginTop: 2 }}>${(totalRevenue / 1000000).toFixed(2)}M / month</div>
+            <div style={{ fontSize: 12, color: "#10B981", fontWeight: 600, marginTop: 2 }}>${totalRevenue.toLocaleString()} / month</div>
             <button onClick={() => { sessionStorage.removeItem("pm_auth"); setLoggedIn(false); }}
               style={{ marginTop: 10, width: "100%", padding: "7px", background: "transparent", border: "1px solid #374151", color: "#6B7280", borderRadius: 6, fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
               Sign Out
@@ -856,10 +856,10 @@ export default function App() {
             {tab === "dashboard" && (
               <div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 16, marginBottom: 28 }}>
-                  <MetricCard label="Portfolio Value" value={totalAssetValue>0?`$${(totalAssetValue/1000000).toFixed(1)}M`:"—"} sub="Total asset value" accent="#7C3AED" />
-                  <MetricCard label="Monthly Revenue" value={`$${(totalRevenue/1000000).toFixed(2)}M`} sub="All properties" accent="#4F46E5" />
+                  <MetricCard label="Portfolio Value" value={totalAssetValue>0?`$${Math.round(totalAssetValue).toLocaleString()}`:"—"} sub="Total asset value" accent="#7C3AED" />
+                  <MetricCard label="Monthly Revenue" value={`$${Math.round(totalRevenue).toLocaleString()}`} sub="All properties" accent="#4F46E5" />
                   <MetricCard label="Avg Occupancy" value={`${avgOccupancy}%`} sub={`${properties.filter(p=>p.status==="active").length} fully leased`} accent="#10B981" />
-                  <MetricCard label="Total Debt" value={`$${(totalDebt/1000000).toFixed(1)}M`} sub={`${loans.length} loans`} accent="#EF4444" />
+                  <MetricCard label="Total Debt" value={`$${Math.round(totalDebt).toLocaleString()}`} sub={`${loans.length} loans`} accent="#EF4444" />
                   <MetricCard label="Open Work Orders" value={openMaint} sub="Maintenance" accent="#F59E0B" />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20 }}>
@@ -883,7 +883,7 @@ export default function App() {
                         <div key={type} style={{ marginBottom: 16 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
                             <span style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>{type}</span>
-                            <span style={{ fontSize: 13, fontWeight: 700 }}>${(rev/1000000).toFixed(2)}M</span>
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>${Math.round(rev).toLocaleString()}</span>
                           </div>
                           <OccupancyBar pct={totalRevenue>0?Math.round((rev/totalRevenue)*100):0} color={color} />
                         </div>
@@ -945,7 +945,7 @@ export default function App() {
                           <td style={{ padding: "13px 12px" }}><Badge label={ESTATE_STYLES[p.estate]?.label||p.estate} bg={ESTATE_STYLES[p.estate]?.bg||"#F3F4F6"} color={ESTATE_STYLES[p.estate]?.color||"#374151"} /></td>
                           <td style={{ padding: "13px 12px", fontSize: 12, color: "#374151", whiteSpace: "nowrap" }}>{p.sqft.toLocaleString()}</td>
                           <td style={{ padding: "13px 12px", minWidth: 110 }}><OccupancyBar pct={p.occupancy} color={p.occupancy===0?"#EF4444":p.occupancy<75?"#F59E0B":"#10B981"} /></td>
-                          <td style={{ padding: "13px 12px", fontSize: 13, fontWeight: 700, color: "#7C3AED", whiteSpace: "nowrap" }}>{p.assetValue>0?`$${(p.assetValue/1000000).toFixed(2)}M`:"—"}</td>
+                          <td style={{ padding: "13px 12px", fontSize: 13, fontWeight: 700, color: "#7C3AED", whiteSpace: "nowrap" }}>{p.assetValue>0?`$${Math.round(p.assetValue).toLocaleString()}`:"—"}</td>
                           <td style={{ padding: "13px 12px", fontSize: 13, fontWeight: 700, color: "#111827", whiteSpace: "nowrap" }}>{p.monthlyRent>0?`$${p.monthlyRent.toLocaleString()}`:"—"}</td>
                           <td style={{ padding: "13px 12px" }}><Badge label={STATUS_STYLES[p.status].label} bg={STATUS_STYLES[p.status].bg} color={STATUS_STYLES[p.status].color} /></td>
                           <td style={{ padding: "13px 12px" }}>
@@ -1059,15 +1059,15 @@ export default function App() {
                 {fView === "overview" && (
                   <div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}>
-                      <MetricCard label="Portfolio Value" value={totalAssetValue>0?`$${(totalAssetValue/1000000).toFixed(1)}M`:"—"} sub="Total asset value" accent="#7C3AED" />
-                      <MetricCard label="Monthly Revenue" value={`$${(totalRevenue/1000000).toFixed(2)}M`} sub="All active leases" accent="#10B981" />
-                      <MetricCard label="Monthly Debt Service" value={`$${(totalDebtService/1000000).toFixed(2)}M`} sub={`${loans.length} loans`} accent="#EF4444" />
-                      <MetricCard label="Net Operating Income" value={`$${(netOperatingIncome/1000000).toFixed(2)}M`} sub="Revenue minus debt service" accent="#4F46E5" />
+                      <MetricCard label="Portfolio Value" value={totalAssetValue>0?`$${Math.round(totalAssetValue).toLocaleString()}`:"—"} sub="Total asset value" accent="#7C3AED" />
+                      <MetricCard label="Monthly Revenue" value={`$${Math.round(totalRevenue).toLocaleString()}`} sub="All active leases" accent="#10B981" />
+                      <MetricCard label="Monthly Debt Service" value={`$${Math.round(totalDebtService).toLocaleString()}`} sub={`${loans.length} loans`} accent="#EF4444" />
+                      <MetricCard label="Net Operating Income" value={`$${Math.round(netOperatingIncome).toLocaleString()}`} sub="Revenue minus debt service" accent="#4F46E5" />
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginBottom: 24 }}>
-                      <MetricCard label="Annual Revenue" value={`$${(totalRevenue*12/1000000).toFixed(2)}M`} sub="Run rate" accent="#3B82F6" />
-                      <MetricCard label="Total Debt Outstanding" value={`$${(totalDebt/1000000).toFixed(1)}M`} sub="All loans" accent="#F59E0B" />
-                      <MetricCard label="Maintenance Budget" value={`$${(maintenance.reduce((s,m)=>s+m.cost,0)/1000000).toFixed(2)}M`} sub="Open work orders" accent="#6B7280" />
+                      <MetricCard label="Annual Revenue" value={`$${Math.round(totalRevenue*12).toLocaleString()}`} sub="Run rate" accent="#3B82F6" />
+                      <MetricCard label="Total Debt Outstanding" value={`$${Math.round(totalDebt).toLocaleString()}`} sub="All loans" accent="#F59E0B" />
+                      <MetricCard label="Maintenance Budget" value={`$${Math.round(maintenance.reduce((s,m)=>s+m.cost,0)).toLocaleString()}`} sub="Open work orders" accent="#6B7280" />
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                       {["in-estate","out-of-estate"].map(estate=>{
@@ -1083,7 +1083,7 @@ export default function App() {
                               <span style={{ fontSize: 13, color: "#6B7280" }}>{eProps.length} properties</span>
                             </div>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10 }}>
-                              {[["Asset Value",eValue>0?`$${(eValue/1000000).toFixed(1)}M`:"—"],["Monthly Revenue",`$${(eRev/1000000).toFixed(2)}M`],["Debt Outstanding",`$${(eDebt/1000000).toFixed(1)}M`],["Debt Service",`$${(eService/1000000).toFixed(2)}M/mo`],["Avg Occupancy",`${eProps.length?Math.round(eProps.reduce((s,p)=>s+p.occupancy,0)/eProps.length):0}%`]].map(([l,v])=>(
+                              {[["Asset Value",eValue>0?`$${Math.round(eValue).toLocaleString()}`:"—"],["Monthly Revenue",`$${Math.round(eRev).toLocaleString()}`],["Debt Outstanding",`$${Math.round(eDebt).toLocaleString()}`],["Debt Service",`$${Math.round(eService).toLocaleString()}/mo`],["Avg Occupancy",`${eProps.length?Math.round(eProps.reduce((s,p)=>s+p.occupancy,0)/eProps.length):0}%`]].map(([l,v])=>(
                                 <div key={l}>
                                   <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 3 }}>{l}</div>
                                   <div style={{ fontSize: 16, fontWeight: 700, color: l==="Asset Value"?"#7C3AED":"#111827", fontFamily: "'DM Serif Display', serif" }}>{v}</div>
@@ -1101,8 +1101,8 @@ export default function App() {
                   <div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 }}>
                       <MetricCard label="Total Loans" value={loans.length} sub="Across portfolio" accent="#4F46E5" />
-                      <MetricCard label="Total Balance" value={`$${(totalDebt/1000000).toFixed(1)}M`} sub="Outstanding principal" accent="#EF4444" />
-                      <MetricCard label="Monthly Service" value={`$${(totalDebtService/1000000).toFixed(2)}M`} sub="Combined payments" accent="#F59E0B" />
+                      <MetricCard label="Total Balance" value={`$${Math.round(totalDebt).toLocaleString()}`} sub="Outstanding principal" accent="#EF4444" />
+                      <MetricCard label="Monthly Service" value={`$${Math.round(totalDebtService).toLocaleString()}`} sub="Combined payments" accent="#F59E0B" />
                       <MetricCard label="Watch / Default" value={loans.filter(l=>l.status!=="current").length} sub="Needs attention" accent="#EF4444" />
                     </div>
                     <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
@@ -1128,8 +1128,8 @@ export default function App() {
                                 <td style={{ padding: "13px 12px", fontSize: 12, color: "#374151" }}>{l.lender}</td>
                                 <td style={{ padding: "13px 12px" }}><Badge label={l.type} bg={l.type==="Fixed"?"#DBEAFE":l.type==="Variable"?"#FEF3C7":"#FEE2E2"} color={l.type==="Fixed"?"#1E40AF":l.type==="Variable"?"#92400E":"#991B1B"} /></td>
                                 <td style={{ padding: "13px 12px", minWidth: 150 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>${(l.balance/1000000).toFixed(2)}M</div>
-                                  <div style={{ fontSize: 11, color: "#9CA3AF" }}>of ${(l.originalAmount/1000000).toFixed(2)}M</div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>${Math.round(l.balance).toLocaleString()}</div>
+                                  <div style={{ fontSize: 11, color: "#9CA3AF" }}>of ${Math.round(l.originalAmount).toLocaleString()}</div>
                                   <LoanBar balance={l.balance} original={l.originalAmount} />
                                 </td>
                                 <td style={{ padding: "13px 12px", fontSize: 13, color: "#10B981", fontWeight: 600 }}>{paidDown}%</td>
@@ -1203,7 +1203,9 @@ export default function App() {
                   ["Floors", sel.floors],
                   ["Occupancy", `${sel.occupancy}%`],
                   ["Monthly Rent", sel.monthlyRent>0?`$${sel.monthlyRent.toLocaleString()}`:"Vacant"],
-                  ["Asset Value", sel.assetValue>0?`$${(sel.assetValue/1000000).toFixed(2)}M`:"—"],
+                  ["Asset Value", sel.assetValue>0?`$${Math.round(sel.assetValue).toLocaleString()}`:"—"],
+                  ["Lease Escalation", sel.leaseEscalationPct>0?`${sel.leaseEscalationPct}% on ${sel.leaseEscalationDate||"TBD"}`:"—"],
+                  ...(sel.leaseEscalationPct>0&&sel.monthlyRent>0?[["Escalated Rent", `$${Math.round(sel.monthlyRent*(1+sel.leaseEscalationPct/100)).toLocaleString()}/mo`]]:[] ),
                 ].map(([label,val])=>(
                   <div key={label} style={{ background: "#F9FAFB", borderRadius: 8, padding: "12px 14px" }}>
                     <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>{label}</div>
@@ -1219,12 +1221,18 @@ export default function App() {
                   <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>Loan — {loan.lender}</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, fontSize: 13 }}>
-                      {[["Balance",`$${(loan.balance/1000000).toFixed(2)}M`],["Original",`$${(loan.originalAmount/1000000).toFixed(2)}M`],["Rate",`${loan.interestRate}% ${loan.type}`],["Monthly Pmt",`$${loan.monthlyPayment.toLocaleString()}`],["Maturity",loan.maturityDate],["Status",<Badge label={loan.status} bg={LOAN_STATUS_STYLES[loan.status]?.bg} color={LOAN_STATUS_STYLES[loan.status]?.color} />]].map(([l,v])=>(
+                      {[["Balance",`$${Math.round(loan.balance).toLocaleString()}`],["Original",`$${Math.round(loan.originalAmount).toLocaleString()}`],["Rate",`${loan.interestRate}% ${loan.type}`],["Monthly Pmt",`$${loan.monthlyPayment.toLocaleString()}`],["Maturity",loan.maturityDate],["Status",<Badge label={loan.status} bg={LOAN_STATUS_STYLES[loan.status]?.bg} color={LOAN_STATUS_STYLES[loan.status]?.color} />]].map(([l,v])=>(
                         <div key={l}><div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.04em" }}>{l}</div><div style={{ fontWeight: 700 }}>{v}</div></div>
                       ))}
                     </div>
                   </div>
-                ) : <div style={{ background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#9CA3AF" }}>No loan on record.</div>;
+                ) : <div style={{ background: "#F9FAFB", borderRadius: 8, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, color: "#9CA3AF" }}>No loan on record.</span>
+                    <button onClick={()=>{ setNewL(l=>({...l, propertyId: String(sel.id)})); setShowAddLoan(true); }}
+                      style={{ fontSize: 12, color: "#4F46E5", background: "#EEF2FF", border: "none", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                      + Add Loan
+                    </button>
+                  </div>;
               })()}
 
               <div style={{ marginBottom: 16 }}>
@@ -1292,6 +1300,8 @@ export default function App() {
                 <Field label="Asset Value ($)" value={editP.assetValue} onChange={v=>setEditP(p=>({...p,assetValue:v}))} type="number" />
                 <Field label="Floors" value={editP.floors} onChange={v=>setEditP(p=>({...p,floors:v}))} type="number" />
                 <Field label="Sq Ft" value={editP.sqft} onChange={v=>setEditP(p=>({...p,sqft:v}))} type="number" />
+                <Field label="Lease Escalation %" value={editP.leaseEscalationPct||""} onChange={v=>setEditP(p=>({...p,leaseEscalationPct:v}))} type="number" />
+                <Field label="Next Escalation Date" value={editP.leaseEscalationDate||""} onChange={v=>setEditP(p=>({...p,leaseEscalationDate:v}))} type="date" />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
                 <button onClick={()=>{setEditMode(false);setEditP(null);}}
@@ -1299,7 +1309,7 @@ export default function App() {
                   Cancel
                 </button>
                 <button onClick={async ()=>{
-                  const updated = {...editP, floors: +editP.floors, sqft: +editP.sqft, monthlyRent: +editP.monthlyRent, assetValue: +editP.assetValue, occupancy: +editP.occupancy};
+                  const updated = {...editP, floors: +editP.floors, sqft: +editP.sqft, monthlyRent: +editP.monthlyRent, assetValue: +editP.assetValue, occupancy: +editP.occupancy, leaseEscalationPct: +editP.leaseEscalationPct||0, leaseEscalationDate: editP.leaseEscalationDate||""};
                   await updateProperty(updated);
                   setSel(updated);
                   setEditMode(false);
@@ -1328,8 +1338,10 @@ export default function App() {
             <Field label="Asset Value ($)" value={newP.assetValue} onChange={v=>setNewP(p=>({...p,assetValue:v}))} type="number" />
             <Field label="Floors" value={newP.floors} onChange={v=>setNewP(p=>({...p,floors:v}))} type="number" />
             <Field label="Sq Ft" value={newP.sqft} onChange={v=>setNewP(p=>({...p,sqft:v}))} type="number" />
+            <Field label="Lease Escalation %" value={newP.leaseEscalationPct} onChange={v=>setNewP(p=>({...p,leaseEscalationPct:v}))} type="number" />
+            <Field label="Next Escalation Date" value={newP.leaseEscalationDate} onChange={v=>setNewP(p=>({...p,leaseEscalationDate:v}))} type="date" />
           </div>
-          <button onClick={()=>{if(!newP.name||!newP.address)return; addProperty(newP); setShowAddProp(false); setNewP({name:"",address:"",type:"Office",floors:"",sqft:"",monthlyRent:"",assetValue:"",status:"active",estate:"in-estate",entity:""}); }}
+          <button onClick={()=>{if(!newP.name||!newP.address)return; addProperty(newP); setShowAddProp(false); setNewP({name:"",address:"",type:"Office",floors:"",sqft:"",monthlyRent:"",assetValue:"",status:"active",estate:"in-estate",entity:"",leaseEscalationPct:"",leaseEscalationDate:""}); }}
             style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:4 }}>
             Add Property
           </button>
