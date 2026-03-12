@@ -92,13 +92,13 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-function Field({ label, value, onChange, type = "text", options }) {
+function Field({ label, value, onChange, type = "text", options, step }) {
   const s = { width: "100%", padding: "9px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box", background: "#FAFAFA" };
   return (
     <div style={{ marginBottom: 14 }}>
       <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</label>
       {options ? <select value={value} onChange={e => onChange(e.target.value)} style={s}>{options.map(o => <option key={o.v ?? o} value={o.v ?? o}>{o.l ?? o}</option>)}</select>
-        : <input type={type} value={value} onChange={e => onChange(e.target.value)} style={s} />}
+        : <input type={type} value={value} step={type === "number" ? (step ?? "any") : undefined} onChange={e => onChange(e.target.value)} style={s} />}
     </div>
   );
 }
@@ -199,13 +199,19 @@ function MapView({ properties, loans, onSelect, TYPE_COLORS, ESTATE_STYLES, STAT
     return true;
   });
 
-  // Project lat/lng to match the STATE_PATHS coordinate system (960x580 viewBox)
-  const project = (lat, lng) => {
-    // Fitted to match state boundaries in the 960x580 viewBox
-    const x = (lng + 124.8) * (800 / 57) + 30;
-    const y = (49.4 - lat) * (430 / 24) + 95;
-    return { x: Math.max(20, Math.min(940, x)), y: Math.max(20, Math.min(560, y)) };
-  };
+  // Project lat/lng onto the 960x580 SVG viewBox.
+  // State paths were hand-drawn using approximate screen coordinates, so we
+  // use the known pixel positions of two anchor points to derive the transform:
+  // Seattle WA  (47.6, -122.3) → approx SVG (165, 115)
+  // Miami FL    (25.8, -80.2)  → approx SVG (590, 392)
+  // Solve: x = (lng - lngMin) * xScale + xOffset
+  //        y = (latMax - lat) * yScale + yOffset
+  const xScale = (590 - 165) / (-80.2 - (-122.3));   // px per degree lng
+  const yScale = (392 - 115) / (47.6 - 25.8);         // px per degree lat
+  const project = (lat, lng) => ({
+    x: Math.max(30, Math.min(930, (lng - (-122.3)) * xScale + 165)),
+    y: Math.max(30, Math.min(555, (47.6 - lat) * yScale + 115)),
+  });
 
   const statePropCount = {};
   visibleProps.forEach(p => {
@@ -288,21 +294,25 @@ function MapView({ properties, loans, onSelect, TYPE_COLORS, ESTATE_STYLES, STAT
             const hasProps = statePropCount[abbr] > 0;
             return (
               <path key={abbr} d={d}
-                fill={hasProps ? "rgba(79,70,229,0.18)" : "rgba(255,255,255,0.03)"}
-                stroke={hasProps ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}
-                strokeWidth={hasProps ? 1.2 : 0.6}
+                // States with properties glow in indigo; empty states are subtly visible
+                fill={hasProps ? "rgba(79,70,229,0.22)" : "rgba(255,255,255,0.05)"}
+                stroke={hasProps ? "rgba(129,140,248,0.7)" : "rgba(255,255,255,0.14)"}
+                strokeWidth={hasProps ? 1.4 : 0.7}
                 style={{ transition: "fill 0.2s" }}
               />
             );
           })}
 
-          {/* State abbreviation labels */}
+          {/* State abbreviation labels — brighter for readability */}
           {Object.entries(STATE_LABELS).map(([abbr, [lx, ly]]) => {
             const skip = ["CT","DE","RI","DC","MD","NJ","NH","VT","MA"].includes(abbr);
             if (skip) return null;
+            const hasProps = statePropCount[abbr] > 0;
             return (
               <text key={"lbl"+abbr} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
-                fontSize="8" fill="rgba(148,163,184,0.45)" fontFamily="'DM Sans',sans-serif" fontWeight="600"
+                fontSize={hasProps ? "9" : "8"}
+                fill={hasProps ? "rgba(199,210,254,0.85)" : "rgba(148,163,184,0.4)"}
+                fontFamily="'DM Sans',sans-serif" fontWeight={hasProps ? "700" : "500"}
                 style={{ pointerEvents: "none", userSelect: "none" }}>
                 {abbr}
               </text>
@@ -631,45 +641,55 @@ function PropertyFiles({ files, setFiles }) {
 
 // Loan math helpers
 function calcFixedPayment(principal, annualRate, startDate, maturityDate) {
-  if (!principal || !annualRate || !startDate || !maturityDate) return null;
-  const r = annualRate / 100 / 12;
-  // Parse dates safely by adding T00:00:00 to avoid timezone shifts
+  const P = parseFloat(principal);
+  const rate = parseFloat(annualRate);
+  if (!P || !rate || !startDate || !maturityDate) return null;
+  // Monthly interest rate — divide annual % by 100 then by 12
+  // e.g. 3.8% → 0.038 / 12 = 0.003167
+  const r = rate / 100 / 12;
+  // Parse dates with T00:00:00 to avoid UTC timezone shift
   const start = new Date(startDate + "T00:00:00");
   const end = new Date(maturityDate + "T00:00:00");
-  // Calculate total months more accurately
-  const totalMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-  if (totalMonths <= 0 || r === 0) return null;
-  // Standard amortization formula: M = P[r(1+r)^n]/[(1+r)^n-1]
-  const payment = principal * (r * Math.pow(1 + r, totalMonths)) / (Math.pow(1 + r, totalMonths) - 1);
-  // Calculate current balance: how many full months have passed since start?
+  // n = total number of monthly payments
+  const n = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  if (n <= 0 || r === 0) return null;
+  // Standard amortization: M = P * [r(1+r)^n] / [(1+r)^n - 1]
+  const factor = Math.pow(1 + r, n);
+  const payment = P * (r * factor) / (factor - 1);
+  // Current balance: simulate amortization month-by-month from start to today
   const now = new Date();
-  const monthsElapsed = Math.max(0, (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()));
-  let balance = principal;
-  const monthsToRun = Math.min(monthsElapsed, totalMonths);
-  for (let i = 0; i < monthsToRun; i++) {
-    const interest = balance * r;
-    balance = balance - (payment - interest);
+  const monthsElapsed = Math.max(0,
+    (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth())
+  );
+  let balance = P;
+  for (let i = 0; i < Math.min(monthsElapsed, n); i++) {
+    const interestThisMonth = balance * r;
+    const principalThisMonth = payment - interestThisMonth;
+    balance -= principalThisMonth;
     if (balance < 0) { balance = 0; break; }
   }
-  return { payment: Math.round(payment), balance: Math.round(balance), totalMonths };
+  return { payment: Math.round(payment), balance: Math.round(balance), totalMonths: n };
 }
 
 function calcInterestOnlyPayment(principal, annualRate) {
-  if (!principal || !annualRate) return { payment: 0, balance: principal };
-  return { payment: Math.round(principal * (annualRate / 100) / 12), balance: principal };
+  const P = parseFloat(principal);
+  const rate = parseFloat(annualRate);
+  if (!P || !rate) return { payment: 0, balance: P || 0 };
+  // Simple: monthly payment = P * (annualRate% / 12), balance never changes
+  return { payment: Math.round(P * (rate / 100) / 12), balance: P };
 }
 
 function LoanForm({ loan, setLoan, propOpts, showPropertyField, onSave, saveLabel }) {
   const LOAN_TYPES = ["Fixed", "Variable", "Interest Only", "Bridge", "Construction"];
 
-  // Auto-calculate when key fields change
+  // Re-run calculation whenever any input changes for Fixed or Interest Only loans
   const handleCalc = (updated) => {
-    const p = +updated.originalAmount;
-    const r = +updated.interestRate;
-    if (updated.type === "Interest Only" && p && r) {
+    const p = parseFloat(updated.originalAmount);
+    const r = parseFloat(updated.interestRate);
+    if (updated.type === "Interest Only" && p > 0 && r > 0) {
       const { payment, balance } = calcInterestOnlyPayment(p, r);
       setLoan({ ...updated, monthlyPayment: String(payment), balance: String(balance) });
-    } else if (updated.type === "Fixed" && p && r && updated.startDate && updated.maturityDate) {
+    } else if (updated.type === "Fixed" && p > 0 && r > 0 && updated.startDate && updated.maturityDate) {
       const result = calcFixedPayment(p, r, updated.startDate, updated.maturityDate);
       if (result) {
         setLoan({ ...updated, monthlyPayment: String(result.payment), balance: String(result.balance) });
@@ -833,11 +853,12 @@ export default function App() {
     setMaintenance(prev => prev.map(x => x.id === id ? {...x, status} : x));
   };
 
-  const totalRevenue = properties.reduce((s, p) => s + p.monthlyRent, 0);
-  const totalAssetValue = properties.reduce((s, p) => s + (p.assetValue || 0), 0);
-  const avgOccupancy = Math.round(properties.reduce((s, p) => s + p.occupancy, 0) / (properties.length || 1));
-  const totalDebt = loans.reduce((s, l) => s + l.balance, 0);
-  const totalDebtService = loans.reduce((s, l) => s + l.monthlyPayment, 0);
+  const totalRevenue = properties.reduce((s, p) => s + (parseFloat(p.monthlyRent) || 0), 0);
+  const totalAssetValue = properties.reduce((s, p) => s + (parseFloat(p.assetValue) || 0), 0);
+  const avgOccupancy = Math.round(properties.reduce((s, p) => s + (parseFloat(p.occupancy) || 0), 0) / (properties.length || 1));
+  // Force parseFloat on balance/payment to prevent string concatenation from Supabase string returns
+  const totalDebt = loans.reduce((s, l) => s + (parseFloat(l.balance) || 0), 0);
+  const totalDebtService = loans.reduce((s, l) => s + (parseFloat(l.monthlyPayment) || 0), 0);
   const netOperatingIncome = totalRevenue - totalDebtService;
   const openMaint = maintenance.filter(m => m.status !== "completed").length;
 
