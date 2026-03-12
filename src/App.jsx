@@ -1298,7 +1298,7 @@ export default function App() {
                   style={{ padding: "11px", background: "#F9FAFB", border: "1.5px solid #E5E7EB", color: "#374151", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
                   Cancel
                 </button>
-                <button onClick={()=>{
+                <button onClick={async ()=>{
                   const updated = {...editP, floors: +editP.floors, sqft: +editP.sqft, monthlyRent: +editP.monthlyRent, assetValue: +editP.assetValue, occupancy: +editP.occupancy};
                   await updateProperty(updated);
                   setSel(updated);
