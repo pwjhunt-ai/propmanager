@@ -39,6 +39,7 @@ const mapProperty = r => ({ id: r.id, name: r.name, address: r.address, type: r.
 const mapLoan = r => ({ id: r.id, propertyId: r.property_id, lender: r.lender, originalAmount: +r.original_amount||0, balance: +r.balance||0, interestRate: +r.interest_rate||0, monthlyPayment: +r.monthly_payment||0, startDate: r.start_date, maturityDate: r.maturity_date, type: r.type, status: r.status });
 const mapTenant = r => ({ id: r.id, propertyId: r.property_id, name: r.name, unit: r.unit, leaseStart: r.lease_start, leaseEnd: r.lease_end, monthlyRent: +r.monthly_rent||0, contact: r.contact });
 const mapMaintenance = r => ({ id: r.id, propertyId: r.property_id, title: r.title, priority: r.priority, status: r.status, date: r.date, cost: +r.cost||0, assignee: r.assignee });
+const mapTax = r => ({ id: r.id, propertyId: r.property_id, taxYear: r.tax_year, annualAmount: +r.annual_amount||0, amountPaid: +r.amount_paid||0, dueDate: r.due_date||"", datePaid: r.date_paid||"", status: r.status||"due", notes: r.notes||"" });
 
 const initialProperties = [];
 const initialLoans = [];
@@ -798,6 +799,11 @@ export default function App() {
   const [editL, setEditL] = useState(null);
   const [showEditMaint, setShowEditMaint] = useState(false);
   const [editMaint, setEditMaint] = useState(null);
+  const [taxes, setTaxes] = useState([]);
+  const [showAddTax, setShowAddTax] = useState(false);
+  const [showEditTax, setShowEditTax] = useState(false);
+  const [editTax, setEditTax] = useState(null);
+  const [newTax, setNewTax] = useState({ propertyId: "", taxYear: new Date().getFullYear().toString(), annualAmount: "", amountPaid: "", dueDate: "", datePaid: "", status: "due", notes: "" });
 
   const [loading, setLoading] = useState(true);
 
@@ -805,19 +811,32 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const [p, l, t, m] = await Promise.all([
-          db.get("properties"), db.get("loans"), db.get("tenants"), db.get("maintenance")
+        const [p, l, t, m, tx] = await Promise.all([
+          db.get("properties"), db.get("loans"), db.get("tenants"), db.get("maintenance"), db.get("property_taxes")
         ]);
         setProperties(p.map(mapProperty));
         setLoans(l.map(mapLoan));
         setTenants(t.map(mapTenant));
         setMaintenance(m.map(mapMaintenance));
+        setTaxes(tx.map(mapTax));
       } catch (e) { console.error(e); }
       setLoading(false);
     })();
   }, []);
 
   // Supabase CRUD helpers
+  const addTax = async (tx) => {
+    const row = await db.insert("property_taxes", { property_id: +tx.propertyId, tax_year: tx.taxYear, annual_amount: +tx.annualAmount||0, amount_paid: +tx.amountPaid||0, due_date: tx.dueDate||null, date_paid: tx.datePaid||null, status: tx.status, notes: tx.notes||"" });
+    setTaxes(prev => [...prev, mapTax(row)]);
+  };
+  const updateTax = async (tx) => {
+    await db.update("property_taxes", tx.id, { tax_year: tx.taxYear, annual_amount: +tx.annualAmount||0, amount_paid: +tx.amountPaid||0, due_date: tx.dueDate||null, date_paid: tx.datePaid||null, status: tx.status, notes: tx.notes||"" });
+    setTaxes(prev => prev.map(x => x.id === tx.id ? {...x, ...tx, annualAmount: +tx.annualAmount, amountPaid: +tx.amountPaid} : x));
+  };
+  const deleteTax = async (id) => {
+    await db.delete("property_taxes", id);
+    setTaxes(prev => prev.filter(x => x.id !== id));
+  };
   const addProperty = async (p) => {
     const row = await db.insert("properties", { name: p.name, address: p.address, type: p.type, floors: +p.floors, sqft: +p.sqft, occupancy: p.status==="vacant"?0:+p.occupancy||80, monthly_rent: +p.monthlyRent, asset_value: +p.assetValue, status: p.status, estate: p.estate, entity: p.entity, lat: 37.7, lng: -96, lease_escalation_pct: +p.leaseEscalationPct||0, lease_escalation_date: p.leaseEscalationDate||null });
     setProperties(prev => [...prev, mapProperty(row)]);
@@ -888,6 +907,7 @@ export default function App() {
     { id: "tenants", label: "Tenants", icon: "👥" },
     { id: "maintenance", label: "Maintenance", icon: "🔧" },
     { id: "finances", label: "Finances", icon: "💰" },
+    { id: "taxes", label: "Property Tax", icon: "🏛" },
     { id: "map", label: "Map", icon: "📍" },
   ];
 
@@ -1002,6 +1022,7 @@ export default function App() {
               {tab === "tenants" && <button style={btnStyle} onClick={() => setShowAddTenant(true)}>+ Add Tenant</button>}
               {tab === "maintenance" && <button style={btnStyle} onClick={() => setShowAddMaint(true)}>+ Log Request</button>}
               {tab === "finances" && fView === "loans" && <button style={btnStyle} onClick={() => setShowAddLoan(true)}>+ Add Loan</button>}
+              {tab === "taxes" && <button style={btnStyle} onClick={() => setShowAddTax(true)}>+ Add Tax Record</button>}
             </div>
           </div>
 
@@ -1348,6 +1369,95 @@ export default function App() {
             )}
 
             {/* MAP */}
+            {tab === "taxes" && (
+              <div>
+                {/* Summary cards */}
+                {(() => {
+                  const currentYear = new Date().getFullYear().toString();
+                  const thisYearTaxes = taxes.filter(t => t.taxYear === currentYear);
+                  const totalDue = thisYearTaxes.reduce((s, t) => s + t.annualAmount, 0);
+                  const totalPaid = thisYearTaxes.reduce((s, t) => s + t.amountPaid, 0);
+                  const totalBalance = totalDue - totalPaid;
+                  const overdue = taxes.filter(t => t.status === "overdue").length;
+                  return (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
+                      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: "4px solid #4F46E5" }}>
+                        <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>{currentYear} Total Due</div>
+                        <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'DM Serif Display',serif", color: "#111827" }}>${totalDue.toLocaleString()}</div>
+                      </div>
+                      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: "4px solid #10B981" }}>
+                        <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>{currentYear} Paid</div>
+                        <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'DM Serif Display',serif", color: "#10B981" }}>${totalPaid.toLocaleString()}</div>
+                      </div>
+                      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: "4px solid #F59E0B" }}>
+                        <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>{currentYear} Balance</div>
+                        <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'DM Serif Display',serif", color: totalBalance > 0 ? "#F59E0B" : "#10B981" }}>${totalBalance.toLocaleString()}</div>
+                      </div>
+                      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: "4px solid #EF4444" }}>
+                        <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>Overdue</div>
+                        <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'DM Serif Display',serif", color: overdue > 0 ? "#EF4444" : "#111827" }}>{overdue}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Tax records table */}
+                <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#F9FAFB", borderBottom: "1px solid #E5E7EB" }}>
+                        {["Property","Tax Year","Annual Amount","Amount Paid","Balance","Due Date","Date Paid","Status","Notes",""].map(h => (
+                          <th key={h} style={{ padding: "12px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6B7280", letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {taxes.length === 0 ? (
+                        <tr><td colSpan={10} style={{ padding: 32, textAlign: "center", color: "#9CA3AF", fontSize: 14 }}>No tax records yet. Click + Add Tax Record to get started.</td></tr>
+                      ) : [...taxes].sort((a, b) => b.taxYear - a.taxYear || a.propertyId - b.propertyId).map(tx => {
+                        const prop = properties.find(p => p.id === tx.propertyId);
+                        const balance = tx.annualAmount - tx.amountPaid;
+                        const TAX_STATUS = {
+                          paid: { bg: "#D1FAE5", color: "#065F46", label: "Paid" },
+                          partial: { bg: "#FEF3C7", color: "#92400E", label: "Partial" },
+                          due: { bg: "#DBEAFE", color: "#1E40AF", label: "Due" },
+                          overdue: { bg: "#FEE2E2", color: "#991B1B", label: "Overdue" },
+                        };
+                        const s = TAX_STATUS[tx.status] || TAX_STATUS.due;
+                        return (
+                          <tr key={tx.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                            <td style={{ padding: "13px 14px", fontWeight: 600, color: "#111827", fontSize: 13 }}>{prop?.name || "—"}</td>
+                            <td style={{ padding: "13px 14px", fontSize: 13, color: "#374151", fontWeight: 600 }}>{tx.taxYear}</td>
+                            <td style={{ padding: "13px 14px", fontSize: 13, fontWeight: 700, color: "#111827" }}>${tx.annualAmount.toLocaleString()}</td>
+                            <td style={{ padding: "13px 14px", fontSize: 13, color: "#10B981", fontWeight: 600 }}>${tx.amountPaid.toLocaleString()}</td>
+                            <td style={{ padding: "13px 14px", fontSize: 13, fontWeight: 700, color: balance > 0 ? "#F59E0B" : "#10B981" }}>${balance.toLocaleString()}</td>
+                            <td style={{ padding: "13px 14px", fontSize: 12, color: "#6B7280" }}>{tx.dueDate || "—"}</td>
+                            <td style={{ padding: "13px 14px", fontSize: 12, color: "#6B7280" }}>{tx.datePaid || "—"}</td>
+                            <td style={{ padding: "13px 14px" }}><Badge label={s.label} bg={s.bg} color={s.color} /></td>
+                            <td style={{ padding: "13px 14px", fontSize: 12, color: "#6B7280", maxWidth: 160 }}>
+                              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tx.notes || "—"}</div>
+                            </td>
+                            <td style={{ padding: "13px 14px" }}>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button onClick={() => { setEditTax({...tx, annualAmount: String(tx.annualAmount), amountPaid: String(tx.amountPaid), propertyId: String(tx.propertyId) }); setShowEditTax(true); }}
+                                  style={{ fontSize: 12, color: "#4F46E5", background: "#EEF2FF", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                                  ✏️ Edit
+                                </button>
+                                <button onClick={() => { if (window.confirm("Delete this tax record?")) deleteTax(tx.id); }}
+                                  style={{ fontSize: 12, color: "#EF4444", background: "#FEF2F2", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                                  🗑
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {tab === "map" && (
               <MapView properties={properties} loans={loans} onSelect={setSel} TYPE_COLORS={TYPE_COLORS} ESTATE_STYLES={ESTATE_STYLES} STATUS_STYLES={STATUS_STYLES} />
             )}
@@ -1611,6 +1721,64 @@ export default function App() {
             await updateMaintenance({...editMaint, propertyId: +editMaint.propertyId});
             setShowEditMaint(false);
             setEditMaint(null);
+          }} style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif" }}>
+            Save Changes
+          </button>
+        </Modal>
+      )}
+
+      {/* ADD TAX */}
+      {showAddTax && (
+        <Modal title="Add Tax Record" onClose={()=>setShowAddTax(false)}>
+          <Field label="Property" value={newTax.propertyId} onChange={v=>setNewTax(t=>({...t,propertyId:v}))} options={propOpts} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Tax Year" value={newTax.taxYear} onChange={v=>setNewTax(t=>({...t,taxYear:v}))} type="number" />
+            <Field label="Status" value={newTax.status} onChange={v=>setNewTax(t=>({...t,status:v}))} options={["due","partial","paid","overdue"]} />
+            <Field label="Annual Amount ($)" value={newTax.annualAmount} onChange={v=>setNewTax(t=>({...t,annualAmount:v}))} type="number" />
+            <Field label="Amount Paid ($)" value={newTax.amountPaid} onChange={v=>setNewTax(t=>({...t,amountPaid:v}))} type="number" />
+            <Field label="Due Date" value={newTax.dueDate} onChange={v=>setNewTax(t=>({...t,dueDate:v}))} type="date" />
+            <Field label="Date Paid" value={newTax.datePaid} onChange={v=>setNewTax(t=>({...t,datePaid:v}))} type="date" />
+          </div>
+          <Field label="Notes" value={newTax.notes} onChange={v=>setNewTax(t=>({...t,notes:v}))} />
+          {newTax.annualAmount && newTax.amountPaid !== "" && (
+            <div style={{ background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#4338CA", fontWeight: 600 }}>
+              Balance remaining: ${(+newTax.annualAmount - +newTax.amountPaid).toLocaleString()}
+            </div>
+          )}
+          <button onClick={async ()=>{
+            if(!newTax.propertyId || !newTax.taxYear) return;
+            await addTax(newTax);
+            setShowAddTax(false);
+            setNewTax({ propertyId:"", taxYear: new Date().getFullYear().toString(), annualAmount:"", amountPaid:"", dueDate:"", datePaid:"", status:"due", notes:"" });
+          }} style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif" }}>
+            Add Tax Record
+          </button>
+        </Modal>
+      )}
+
+      {/* EDIT TAX */}
+      {showEditTax && editTax && (
+        <Modal title="Edit Tax Record" onClose={()=>{setShowEditTax(false);setEditTax(null);}}>
+          <Field label="Property" value={editTax.propertyId} onChange={v=>setEditTax(t=>({...t,propertyId:v}))} options={propOpts} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Tax Year" value={editTax.taxYear} onChange={v=>setEditTax(t=>({...t,taxYear:v}))} type="number" />
+            <Field label="Status" value={editTax.status} onChange={v=>setEditTax(t=>({...t,status:v}))} options={["due","partial","paid","overdue"]} />
+            <Field label="Annual Amount ($)" value={editTax.annualAmount} onChange={v=>setEditTax(t=>({...t,annualAmount:v}))} type="number" />
+            <Field label="Amount Paid ($)" value={editTax.amountPaid} onChange={v=>setEditTax(t=>({...t,amountPaid:v}))} type="number" />
+            <Field label="Due Date" value={editTax.dueDate||""} onChange={v=>setEditTax(t=>({...t,dueDate:v}))} type="date" />
+            <Field label="Date Paid" value={editTax.datePaid||""} onChange={v=>setEditTax(t=>({...t,datePaid:v}))} type="date" />
+          </div>
+          <Field label="Notes" value={editTax.notes||""} onChange={v=>setEditTax(t=>({...t,notes:v}))} />
+          {editTax.annualAmount && (
+            <div style={{ background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#4338CA", fontWeight: 600 }}>
+              Balance remaining: ${(+editTax.annualAmount - +editTax.amountPaid).toLocaleString()}
+            </div>
+          )}
+          <button onClick={async ()=>{
+            if(!editTax.taxYear) return;
+            await updateTax({...editTax, propertyId: +editTax.propertyId});
+            setShowEditTax(false);
+            setEditTax(null);
           }} style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif" }}>
             Save Changes
           </button>
