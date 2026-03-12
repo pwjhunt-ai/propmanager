@@ -796,6 +796,8 @@ export default function App() {
   const [editP, setEditP] = useState(null);
   const [showEditLoan, setShowEditLoan] = useState(false);
   const [editL, setEditL] = useState(null);
+  const [showEditMaint, setShowEditMaint] = useState(false);
+  const [editMaint, setEditMaint] = useState(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -851,6 +853,14 @@ export default function App() {
   const updateMaintenanceStatus = async (id, status) => {
     await db.update("maintenance", id, { status });
     setMaintenance(prev => prev.map(x => x.id === id ? {...x, status} : x));
+  };
+  const updateMaintenance = async (m) => {
+    await db.update("maintenance", m.id, { title: m.title, priority: m.priority, status: m.status, date: m.date, cost: +m.cost||0, assignee: m.assignee });
+    setMaintenance(prev => prev.map(x => x.id === m.id ? {...x, ...m, cost: +m.cost||0} : x));
+  };
+  const deleteMaintenance = async (id) => {
+    await db.delete("maintenance", id);
+    setMaintenance(prev => prev.filter(x => x.id !== id));
   };
 
   const totalRevenue = properties.reduce((s, p) => s + (parseFloat(p.monthlyRent) || 0), 0);
@@ -1158,7 +1168,7 @@ export default function App() {
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: "#F9FAFB", borderBottom: "1px solid #E5E7EB" }}>
-                        {["Request","Property","Priority","Assignee","Est. Cost","Status","Update"].map(h=>(
+                        {["Request","Property","Priority","Assignee","Est. Cost","Status","Update",""].map(h=>(
                           <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6B7280", letterSpacing: "0.05em", textTransform: "uppercase" }}>{h}</th>
                         ))}
                       </tr>
@@ -1182,6 +1192,18 @@ export default function App() {
                                 style={{ fontSize: 12, padding: "5px 8px", border: "1px solid #D1D5DB", borderRadius: 6, outline: "none", cursor: "pointer", background: "#fff" }}>
                                 {["open","in-progress","scheduled","completed"].map(s=><option key={s} value={s}>{s}</option>)}
                               </select>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button onClick={()=>{ setEditMaint({...m, cost: String(m.cost), propertyId: String(m.propertyId)}); setShowEditMaint(true); }}
+                                  style={{ fontSize: 12, color: "#4F46E5", background: "#EEF2FF", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                                  ✏️ Edit
+                                </button>
+                                <button onClick={()=>{ if(window.confirm(`Delete "${m.title}"?`)) deleteMaintenance(m.id); }}
+                                  style={{ fontSize: 12, color: "#EF4444", background: "#FEF2F2", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                                  🗑
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1570,6 +1592,28 @@ export default function App() {
             }}
             saveLabel="Save Loan Changes"
           />
+        </Modal>
+      )}
+      {/* EDIT MAINTENANCE */}
+      {showEditMaint && editMaint && (
+        <Modal title="Edit Maintenance Request" onClose={()=>{setShowEditMaint(false);setEditMaint(null);}}>
+          <Field label="Property" value={editMaint.propertyId} onChange={v=>setEditMaint(m=>({...m,propertyId:v}))} options={propOpts} />
+          <Field label="Request Title" value={editMaint.title} onChange={v=>setEditMaint(m=>({...m,title:v}))} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Priority" value={editMaint.priority} onChange={v=>setEditMaint(m=>({...m,priority:v}))} options={["low","medium","high"]} />
+            <Field label="Status" value={editMaint.status} onChange={v=>setEditMaint(m=>({...m,status:v}))} options={["open","in-progress","scheduled","completed"]} />
+            <Field label="Date" value={editMaint.date||""} onChange={v=>setEditMaint(m=>({...m,date:v}))} type="date" />
+            <Field label="Est. Cost ($)" value={editMaint.cost} onChange={v=>setEditMaint(m=>({...m,cost:v}))} type="number" />
+          </div>
+          <Field label="Assignee / Contractor" value={editMaint.assignee} onChange={v=>setEditMaint(m=>({...m,assignee:v}))} />
+          <button onClick={async ()=>{
+            if(!editMaint.title) return;
+            await updateMaintenance({...editMaint, propertyId: +editMaint.propertyId});
+            setShowEditMaint(false);
+            setEditMaint(null);
+          }} style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif" }}>
+            Save Changes
+          </button>
         </Modal>
       )}
     </>
