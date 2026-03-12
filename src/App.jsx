@@ -629,6 +629,110 @@ function PropertyFiles({ files, setFiles }) {
   );
 }
 
+// Loan math helpers
+function calcFixedPayment(principal, annualRate, startDate, maturityDate) {
+  if (!principal || !annualRate || !startDate || !maturityDate) return { payment: 0, balance: principal };
+  const r = annualRate / 100 / 12;
+  const start = new Date(startDate);
+  const end = new Date(maturityDate);
+  const totalMonths = Math.round((end - start) / (1000 * 60 * 60 * 24 * 30.44));
+  if (totalMonths <= 0 || r === 0) return { payment: 0, balance: principal };
+  const payment = Math.round(principal * (r * Math.pow(1 + r, totalMonths)) / (Math.pow(1 + r, totalMonths) - 1));
+  // Calculate current balance based on months elapsed since start
+  const now = new Date();
+  const monthsElapsed = Math.max(0, Math.round((now - start) / (1000 * 60 * 60 * 24 * 30.44)));
+  let balance = principal;
+  for (let i = 0; i < Math.min(monthsElapsed, totalMonths); i++) {
+    const interestPortion = balance * r;
+    const principalPortion = payment - interestPortion;
+    balance = Math.max(0, balance - principalPortion);
+  }
+  return { payment, balance: Math.round(balance) };
+}
+
+function calcInterestOnlyPayment(principal, annualRate) {
+  if (!principal || !annualRate) return { payment: 0, balance: principal };
+  return { payment: Math.round(principal * (annualRate / 100) / 12), balance: principal };
+}
+
+function LoanForm({ loan, setLoan, propOpts, showPropertyField, onSave, saveLabel }) {
+  const LOAN_TYPES = ["Fixed", "Variable", "Interest Only", "Bridge", "Construction"];
+
+  // Auto-calculate when key fields change
+  const handleCalc = (updated) => {
+    const p = +updated.originalAmount;
+    const r = +updated.interestRate;
+    if (updated.type === "Interest Only" && p && r) {
+      const { payment, balance } = calcInterestOnlyPayment(p, r);
+      setLoan({ ...updated, monthlyPayment: String(payment), balance: String(balance) });
+    } else if (updated.type === "Fixed" && p && r && updated.startDate && updated.maturityDate) {
+      const { payment, balance } = calcFixedPayment(p, r, updated.startDate, updated.maturityDate);
+      setLoan({ ...updated, monthlyPayment: String(payment), balance: String(balance) });
+    } else {
+      setLoan(updated);
+    }
+  };
+
+  const isInterestOnly = loan.type === "Interest Only";
+  const isFixed = loan.type === "Fixed";
+  const calcedPayment = loan.monthlyPayment ? `$${Math.round(+loan.monthlyPayment).toLocaleString()} / mo` : null;
+  const calcedBalance = loan.balance ? `$${Math.round(+loan.balance).toLocaleString()}` : null;
+
+  return (
+    <div>
+      {showPropertyField && <Field label="Property" value={loan.propertyId} onChange={v=>handleCalc({...loan,propertyId:v})} options={propOpts} />}
+      <Field label="Lender" value={loan.lender} onChange={v=>setLoan({...loan,lender:v})} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Loan Type" value={loan.type} onChange={v=>handleCalc({...loan,type:v})} options={LOAN_TYPES} />
+        <Field label="Status" value={loan.status} onChange={v=>setLoan({...loan,status:v})} options={["current","watch","default"]} />
+        <Field label="Original Amount ($)" value={loan.originalAmount} onChange={v=>handleCalc({...loan,originalAmount:v})} type="number" />
+        <Field label="Interest Rate (%)" value={loan.interestRate} onChange={v=>handleCalc({...loan,interestRate:v})} type="number" />
+        <Field label="Start Date" value={loan.startDate||""} onChange={v=>handleCalc({...loan,startDate:v})} type="date" />
+        <Field label="Maturity Date" value={loan.maturityDate||""} onChange={v=>handleCalc({...loan,maturityDate:v})} type="date" />
+      </div>
+
+      {/* Auto-calculated fields — shown read-only with override option */}
+      {(isFixed || isInterestOnly) && (calcedPayment || calcedBalance) && (
+        <div style={{ background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 10, padding: "12px 16px", margin: "14px 0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {isInterestOnly ? "Interest Only Calculation" : "Amortization Calculation"}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {calcedPayment && (
+              <div>
+                <div style={{ fontSize: 10, color: "#6366F1", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Monthly Payment</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{calcedPayment}</div>
+              </div>
+            )}
+            {calcedBalance && (
+              <div>
+                <div style={{ fontSize: 10, color: "#6366F1", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>{isInterestOnly ? "Balance (fixed)" : "Current Balance"}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{calcedBalance}</div>
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: "#6366F1", marginTop: 8 }}>
+            {isInterestOnly ? "Balance never changes on interest-only loans." : "Balance calculated from start date to today based on amortization schedule."}
+          </div>
+        </div>
+      )}
+
+      {/* Manual override fields for Variable/Bridge/Construction */}
+      {!isFixed && !isInterestOnly && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 4 }}>
+          <Field label="Current Balance ($)" value={loan.balance} onChange={v=>setLoan({...loan,balance:v})} type="number" />
+          <Field label="Monthly Payment ($)" value={loan.monthlyPayment} onChange={v=>setLoan({...loan,monthlyPayment:v})} type="number" />
+        </div>
+      )}
+
+      <button onClick={onSave}
+        style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:12 }}>
+        {saveLabel}
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [properties, setProperties] = useState(initialProperties);
   const [loans, setLoans] = useState(initialLoans);
@@ -1400,47 +1504,37 @@ export default function App() {
       {/* ADD LOAN */}
       {showAddLoan && (
         <Modal title="Add Loan" onClose={()=>setShowAddLoan(false)}>
-          <Field label="Property" value={newL.propertyId} onChange={v=>setNewL(l=>({...l,propertyId:v}))} options={propOpts} />
-          <Field label="Lender" value={newL.lender} onChange={v=>setNewL(l=>({...l,lender:v}))} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Loan Type" value={newL.type} onChange={v=>setNewL(l=>({...l,type:v}))} options={["Fixed","Variable","Bridge","Construction"]} />
-            <Field label="Status" value={newL.status} onChange={v=>setNewL(l=>({...l,status:v}))} options={["current","watch","default"]} />
-            <Field label="Original Amount ($)" value={newL.originalAmount} onChange={v=>setNewL(l=>({...l,originalAmount:v}))} type="number" />
-            <Field label="Current Balance ($)" value={newL.balance} onChange={v=>setNewL(l=>({...l,balance:v}))} type="number" />
-            <Field label="Interest Rate (%)" value={newL.interestRate} onChange={v=>setNewL(l=>({...l,interestRate:v}))} type="number" />
-            <Field label="Monthly Payment ($)" value={newL.monthlyPayment} onChange={v=>setNewL(l=>({...l,monthlyPayment:v}))} type="number" />
-            <Field label="Start Date" value={newL.startDate} onChange={v=>setNewL(l=>({...l,startDate:v}))} type="date" />
-            <Field label="Maturity Date" value={newL.maturityDate} onChange={v=>setNewL(l=>({...l,maturityDate:v}))} type="date" />
-          </div>
-          <button onClick={()=>{if(!newL.lender||!newL.propertyId)return; addLoan(newL); setShowAddLoan(false); setNewL({propertyId:"",lender:"",originalAmount:"",balance:"",interestRate:"",monthlyPayment:"",startDate:"",maturityDate:"",type:"Fixed",status:"current"}); }}
-            style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:4 }}>
-            Add Loan
-          </button>
+          <LoanForm
+            loan={newL}
+            setLoan={setNewL}
+            propOpts={propOpts}
+            showPropertyField={true}
+            onSave={()=>{
+              if(!newL.lender||!newL.propertyId) return;
+              addLoan(newL);
+              setShowAddLoan(false);
+              setNewL({propertyId:"",lender:"",originalAmount:"",balance:"",interestRate:"",monthlyPayment:"",startDate:"",maturityDate:"",type:"Fixed",status:"current"});
+            }}
+            saveLabel="Add Loan"
+          />
         </Modal>
       )}
 
       {/* EDIT LOAN */}
       {showEditLoan && editL && (
         <Modal title="Edit Loan" onClose={()=>{setShowEditLoan(false);setEditL(null);}}>
-          <Field label="Lender" value={editL.lender} onChange={v=>setEditL(l=>({...l,lender:v}))} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Loan Type" value={editL.type} onChange={v=>setEditL(l=>({...l,type:v}))} options={["Fixed","Variable","Bridge","Construction"]} />
-            <Field label="Status" value={editL.status} onChange={v=>setEditL(l=>({...l,status:v}))} options={["current","watch","default"]} />
-            <Field label="Original Amount ($)" value={editL.originalAmount} onChange={v=>setEditL(l=>({...l,originalAmount:v}))} type="number" />
-            <Field label="Current Balance ($)" value={editL.balance} onChange={v=>setEditL(l=>({...l,balance:v}))} type="number" />
-            <Field label="Interest Rate (%)" value={editL.interestRate} onChange={v=>setEditL(l=>({...l,interestRate:v}))} type="number" />
-            <Field label="Monthly Payment ($)" value={editL.monthlyPayment} onChange={v=>setEditL(l=>({...l,monthlyPayment:v}))} type="number" />
-            <Field label="Start Date" value={editL.startDate||""} onChange={v=>setEditL(l=>({...l,startDate:v}))} type="date" />
-            <Field label="Maturity Date" value={editL.maturityDate||""} onChange={v=>setEditL(l=>({...l,maturityDate:v}))} type="date" />
-          </div>
-          <button onClick={async ()=>{
-            if(!editL.lender) return;
-            await updateLoan(editL);
-            setShowEditLoan(false);
-            setEditL(null);
-          }} style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginTop:4 }}>
-            Save Loan Changes
-          </button>
+          <LoanForm
+            loan={editL}
+            setLoan={setEditL}
+            showPropertyField={false}
+            onSave={async ()=>{
+              if(!editL.lender) return;
+              await updateLoan(editL);
+              setShowEditLoan(false);
+              setEditL(null);
+            }}
+            saveLabel="Save Loan Changes"
+          />
         </Modal>
       )}
     </>
