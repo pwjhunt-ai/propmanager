@@ -791,6 +791,8 @@ export default function App() {
   const [fView, setFView] = useState("overview");
   const [newP, setNewP] = useState({ name: "", address: "", type: "Office", floors: "", sqft: "", monthlyRent: "", assetValue: "", status: "active", estate: "in-estate", entity: "", leaseEscalationPct: "", leaseEscalationDate: "" });
   const [newT, setNewT] = useState({ propertyId: "", name: "", unit: "", leaseStart: "", leaseEnd: "", monthlyRent: "", contact: "" });
+  const [showEditTenant, setShowEditTenant] = useState(false);
+  const [editTenant, setEditTenant] = useState(null);
   const [newM, setNewM] = useState({ propertyId: "", title: "", priority: "medium", assignee: "", cost: "", date: "" });
   const [newL, setNewL] = useState({ propertyId: "", lender: "", originalAmount: "", balance: "", interestRate: "", monthlyPayment: "", startDate: "", maturityDate: "", type: "Fixed", status: "current" });
   const [propertyFiles, setPropertyFiles] = useState({});
@@ -884,6 +886,10 @@ export default function App() {
   const addTenant = async (t) => {
     const row = await db.insert("tenants", { property_id: +t.propertyId, name: t.name, unit: t.unit, lease_start: t.leaseStart, lease_end: t.leaseEnd, monthly_rent: +t.monthlyRent, contact: t.contact });
     setTenants(prev => [...prev, mapTenant(row)]);
+  };
+  const updateTenant = async (t) => {
+    await db.update("tenants", t.id, { property_id: +t.propertyId, name: t.name, unit: t.unit, lease_start: t.leaseStart, lease_end: t.leaseEnd, monthly_rent: +t.monthlyRent, contact: t.contact });
+    setTenants(prev => prev.map(x => x.id === t.id ? {...x, ...t, propertyId: +t.propertyId, monthlyRent: +t.monthlyRent} : x));
   };
   const deleteTenant = async (id) => {
     await db.delete("tenants", id);
@@ -1219,8 +1225,12 @@ export default function App() {
                           <td style={{ padding: "14px 16px" }}><Badge label={days<90?"Expiring Soon":"Current"} bg={days<90?"#FEE2E2":"#D1FAE5"} color={days<90?"#991B1B":"#065F46"} /></td>
                           <td style={{ padding: "14px 16px", fontSize: 12, color: "#4F46E5" }}>{t.contact}</td>
                           <td style={{ padding: "14px 16px" }}>
-                            <button onClick={()=>{if(window.confirm(`Remove "${t.name}"?`)) deleteTenant(t.id);}}
-                              style={{ fontSize: 12, color: "#EF4444", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Remove</button>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button onClick={()=>{ setEditTenant({...t, propertyId: String(t.propertyId), monthlyRent: String(t.monthlyRent)}); setShowEditTenant(true); }}
+                                style={{ fontSize: 12, color: "#4F46E5", background: "#EEF2FF", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>✏️ Edit</button>
+                              <button onClick={()=>{if(window.confirm(`Remove "${t.name}"?`)) deleteTenant(t.id);}}
+                                style={{ fontSize: 12, color: "#EF4444", background: "#FEF2F2", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>🗑</button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -2026,6 +2036,32 @@ export default function App() {
             await updateExpense({...editExpense, propertyId: +editExpense.propertyId});
             setShowEditExpense(false);
             setEditExpense(null);
+          }} style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif" }}>
+            Save Changes
+          </button>
+        </Modal>
+      )}
+
+      {/* EDIT TENANT */}
+      {showEditTenant && editTenant && (
+        <Modal title="Edit Tenant" onClose={()=>{setShowEditTenant(false);setEditTenant(null);}}>
+          <Field label="Property" value={editTenant.propertyId} onChange={v=>setEditTenant(t=>({...t,propertyId:v}))} options={propOpts} />
+          <Field label="Tenant / Company Name" value={editTenant.name} onChange={v=>setEditTenant(t=>({...t,name:v}))} />
+          <Field label="Unit / Floor" value={editTenant.unit||""} onChange={v=>setEditTenant(t=>({...t,unit:v}))} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Lease Start" value={editTenant.leaseStart||""} onChange={v=>setEditTenant(t=>({...t,leaseStart:v}))} type="date" />
+            <Field label="Lease End" value={editTenant.leaseEnd||""} onChange={v=>setEditTenant(t=>({...t,leaseEnd:v}))} type="date" />
+          </div>
+          <Field label="Monthly Rent ($)" value={editTenant.monthlyRent} onChange={v=>setEditTenant(t=>({...t,monthlyRent:v}))} type="number" />
+          <Field label="Contact Email" value={editTenant.contact||""} onChange={v=>setEditTenant(t=>({...t,contact:v}))} type="email" />
+          <div style={{ background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#4338CA" }}>
+            💡 To add this tenant to another property, save and then use <strong>+ Add Tenant</strong> with the same name and a different property selected.
+          </div>
+          <button onClick={async()=>{
+            if(!editTenant.name) return;
+            await updateTenant(editTenant);
+            setShowEditTenant(false);
+            setEditTenant(null);
           }} style={{ width:"100%",padding:"12px",background:"#4F46E5",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif" }}>
             Save Changes
           </button>
