@@ -917,10 +917,19 @@ export default function App() {
   const monthlyExpensesForProp = (propId) =>
     expenses.filter(e => e.propertyId === propId && e.frequency === "monthly")
             .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  // Per-property NOI includes operating expenses + debt service
+  const noiForProp = (propId) => {
+    const prop = properties.find(p => p.id === propId);
+    const loan = loans.find(l => l.propertyId === propId);
+    const revenue = parseFloat(prop?.monthlyRent) || 0;
+    const opEx = monthlyExpensesForProp(propId);
+    const debtService = parseFloat(loan?.monthlyPayment) || 0;
+    return revenue - opEx - debtService;
+  };
   const totalMonthlyExpenses = expenses.filter(e => e.frequency === "monthly")
     .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-  // NOI = Revenue - monthly expenses (operating expenses, not debt service)
-  const totalNOI = totalRevenue - totalMonthlyExpenses;
+  // True NOI = Revenue − Operating Expenses − Debt Service
+  const totalNOI = totalRevenue - totalMonthlyExpenses - totalDebtService;
 
   // Category colours for expenses
   const EXPENSE_CATEGORY_COLORS = {
@@ -1148,7 +1157,7 @@ export default function App() {
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: "#F9FAFB", borderBottom: "1px solid #E5E7EB" }}>
-                        {["Property","Type","Owning Entity","Estate","Sq Ft","Occupancy","Asset Value","Monthly Rent","Status",""].map(h=>(
+                        {["Property","Type","Owning Entity","Estate","Sq Ft","$/Sq Ft","Occupancy","Asset Value","Monthly Rent","Status",""].map(h=>(
                           <th key={h} style={{ padding: "12px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6B7280", letterSpacing: "0.05em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                         ))}
                       </tr>
@@ -1166,6 +1175,7 @@ export default function App() {
                           </td>
                           <td style={{ padding: "13px 12px" }}><Badge label={ESTATE_STYLES[p.estate]?.label||p.estate} bg={ESTATE_STYLES[p.estate]?.bg||"#F3F4F6"} color={ESTATE_STYLES[p.estate]?.color||"#374151"} /></td>
                           <td style={{ padding: "13px 12px", fontSize: 12, color: "#374151", whiteSpace: "nowrap" }}>{p.sqft.toLocaleString()}</td>
+                          <td style={{ padding: "13px 12px", fontSize: 13, fontWeight: 700, color: "#059669", whiteSpace: "nowrap" }}>{p.monthlyRent>0&&p.sqft>0?`$${(p.monthlyRent/p.sqft).toFixed(2)}`:"—"}</td>
                           <td style={{ padding: "13px 12px", minWidth: 110 }}><OccupancyBar pct={p.occupancy} color={p.occupancy===0?"#EF4444":p.occupancy<75?"#F59E0B":"#10B981"} /></td>
                           <td style={{ padding: "13px 12px", fontSize: 13, fontWeight: 700, color: "#7C3AED", whiteSpace: "nowrap" }}>{p.assetValue>0?`$${Math.round(p.assetValue).toLocaleString()}`:"—"}</td>
                           <td style={{ padding: "13px 12px", fontSize: 13, fontWeight: 700, color: "#111827", whiteSpace: "nowrap" }}>{p.monthlyRent>0?`$${p.monthlyRent.toLocaleString()}`:"—"}</td>
@@ -1296,9 +1306,14 @@ export default function App() {
                     <>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
                         <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: "4px solid #EF4444" }}>
-                          <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>Monthly Expenses</div>
+                          <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>Operating Expenses</div>
                           <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'DM Serif Display',serif", color: "#EF4444" }}>${monthlyTotal.toLocaleString()}</div>
                           <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>Recurring / month</div>
+                        </div>
+                        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: "4px solid #F59E0B" }}>
+                          <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>Debt Service</div>
+                          <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'DM Serif Display',serif", color: "#F59E0B" }}>${totalDebtService.toLocaleString()}</div>
+                          <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>Monthly loan payments</div>
                         </div>
                         <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: "4px solid #10B981" }}>
                           <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>Monthly Revenue</div>
@@ -1308,12 +1323,7 @@ export default function App() {
                         <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: `4px solid ${totalNOI>=0?"#4F46E5":"#EF4444"}` }}>
                           <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>Monthly NOI</div>
                           <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'DM Serif Display',serif", color: totalNOI>=0?"#4F46E5":"#EF4444" }}>${totalNOI.toLocaleString()}</div>
-                          <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>Revenue − expenses</div>
-                        </div>
-                        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "20px 24px", borderTop: "4px solid #F59E0B" }}>
-                          <div style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>One-Time Expenses</div>
-                          <div style={{ fontSize: 26, fontWeight: 700, fontFamily: "'DM Serif Display',serif", color: "#F59E0B" }}>${oneTimeTotal.toLocaleString()}</div>
-                          <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>{expenses.filter(e=>e.frequency==="one-time").length} entries</div>
+                          <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>Revenue − expenses − debt</div>
                         </div>
                       </div>
 
@@ -1339,12 +1349,14 @@ export default function App() {
 
                 {/* NOI by property */}
                 <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "18px 24px", marginBottom: 20 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 14 }}>NOI by Property (Revenue − Monthly Expenses)</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 14 }}>NOI by Property (Revenue − Operating Expenses − Debt Service)</div>
                   {properties.length === 0
                     ? <div style={{ fontSize: 13, color: "#9CA3AF" }}>No properties yet.</div>
                     : [...properties].sort((a,b)=>b.monthlyRent-a.monthlyRent).map(p => {
                         const propExp = monthlyExpensesForProp(p.id);
-                        const noi = p.monthlyRent - propExp;
+                        const loan = loans.find(l=>l.propertyId===p.id);
+                        const debtService = parseFloat(loan?.monthlyPayment)||0;
+                        const noi = p.monthlyRent - propExp - debtService;
                         const maxRev = Math.max(...properties.map(x=>x.monthlyRent), 1);
                         return (
                           <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -1356,11 +1368,11 @@ export default function App() {
                               <div style={{ height: "100%", background: "#F3F4F6", borderRadius: 4, overflow: "hidden" }}>
                                 <div style={{ width: `${(p.monthlyRent/maxRev)*100}%`, height: "100%", background: TYPE_COLORS[p.type]+"BB", borderRadius: 4 }} />
                               </div>
-                              {propExp > 0 && <div style={{ position: "absolute", top: 0, left: 0, width: `${(propExp/maxRev)*100}%`, height: "100%", background: "rgba(239,68,68,0.25)", borderRadius: 4, borderRight: "2px solid #EF4444" }} />}
+                              {(propExp+debtService) > 0 && <div style={{ position: "absolute", top: 0, left: 0, width: `${((propExp+debtService)/maxRev)*100}%`, height: "100%", background: "rgba(239,68,68,0.25)", borderRadius: 4, borderRight: "2px solid #EF4444" }} />}
                             </div>
-                            <div style={{ width: 140, textAlign: "right" }}>
+                            <div style={{ width: 160, textAlign: "right" }}>
                               <div style={{ fontSize: 12, color: "#6B7280" }}>Rev: ${p.monthlyRent.toLocaleString()}</div>
-                              <div style={{ fontSize: 12, color: "#EF4444" }}>Exp: ${propExp.toLocaleString()}</div>
+                              <div style={{ fontSize: 12, color: "#EF4444" }}>OpEx: ${propExp.toLocaleString()} | DS: ${debtService.toLocaleString()}</div>
                               <div style={{ fontSize: 13, fontWeight: 700, color: noi>=0?"#10B981":"#EF4444" }}>NOI: ${noi.toLocaleString()}</div>
                             </div>
                           </div>
@@ -1430,7 +1442,7 @@ export default function App() {
                       <MetricCard label="Portfolio Value" value={totalAssetValue>0?`$${Math.round(totalAssetValue).toLocaleString()}`:"—"} sub="Total asset value" accent="#7C3AED" />
                       <MetricCard label="Monthly Revenue" value={`$${Math.round(totalRevenue).toLocaleString()}`} sub="Gross rent all properties" accent="#10B981" />
                       <MetricCard label="Monthly Expenses" value={`$${Math.round(totalMonthlyExpenses).toLocaleString()}`} sub="Recurring operating costs" accent="#EF4444" />
-                      <MetricCard label="Monthly NOI" value={`$${Math.round(totalNOI).toLocaleString()}`} sub="Revenue minus expenses" accent="#4F46E5" />
+                      <MetricCard label="Monthly NOI" value={`$${Math.round(totalNOI).toLocaleString()}`} sub="Revenue − expenses − debt service" accent="#4F46E5" />
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginBottom: 24 }}>
                       <MetricCard label="Annual NOI" value={`$${Math.round(totalNOI*12).toLocaleString()}`} sub="Run rate" accent="#3B82F6" />
@@ -1442,7 +1454,8 @@ export default function App() {
                         const eProps = properties.filter(p=>p.estate===estate);
                         const eRev = eProps.reduce((s,p)=>s+(parseFloat(p.monthlyRent)||0),0);
                         const eExp = eProps.reduce((s,p)=>s+monthlyExpensesForProp(p.id),0);
-                        const eNOI = eRev - eExp;
+                        const eDebtService = loans.filter(l=>eProps.find(p=>p.id===l.propertyId)).reduce((s,l)=>s+(parseFloat(l.monthlyPayment)||0),0);
+                        const eNOI = eRev - eExp - eDebtService;
                         const eDebt = loans.filter(l=>eProps.find(p=>p.id===l.propertyId)).reduce((s,l)=>s+(parseFloat(l.balance)||0),0);
                         const eValue = eProps.reduce((s,p)=>s+(parseFloat(p.assetValue)||0),0);
                         return (
@@ -1520,10 +1533,12 @@ export default function App() {
 
                 {fView === "revenue" && (
                   <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 24 }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 18 }}>NOI by Property (Revenue − Operating Expenses)</h3>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 18 }}>NOI by Property (Revenue − Operating Expenses − Debt Service)</h3>
                     {[...properties].sort((a,b)=>b.monthlyRent-a.monthlyRent).map(p=>{
                       const propExp = monthlyExpensesForProp(p.id);
-                      const noi = p.monthlyRent - propExp;
+                      const loan = loans.find(l=>l.propertyId===p.id);
+                      const debtService = parseFloat(loan?.monthlyPayment)||0;
+                      const noi = p.monthlyRent - propExp - debtService;
                       const maxRev = Math.max(...properties.map(x=>x.monthlyRent),1);
                       return (
                         <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -1663,8 +1678,10 @@ export default function App() {
                   ["Floors", sel.floors],
                   ["Occupancy", `${sel.occupancy}%`],
                   ["Monthly Rent", sel.monthlyRent>0?`$${sel.monthlyRent.toLocaleString()}`:"Vacant"],
+                  ["Price / Sq Ft", sel.monthlyRent>0&&sel.sqft>0?`$${(sel.monthlyRent/sel.sqft).toFixed(2)}/sqft`:"—"],
                   ["Monthly Expenses", `$${monthlyExpensesForProp(sel.id).toLocaleString()}`],
-                  ["Monthly NOI", `$${(sel.monthlyRent - monthlyExpensesForProp(sel.id)).toLocaleString()}`],
+                  ["Debt Service", `$${(parseFloat(loans.find(l=>l.propertyId===sel.id)?.monthlyPayment)||0).toLocaleString()}`],
+                  ["Monthly NOI", `$${noiForProp(sel.id).toLocaleString()}`],
                   ["Lease Escalation", sel.leaseEscalationPct>0?`${sel.leaseEscalationPct}% on ${sel.leaseEscalationDate||"TBD"}`:"—"],
                   ...(sel.leaseEscalationPct>0&&sel.monthlyRent>0?[["Escalated Rent", `$${Math.round(sel.monthlyRent*(1+sel.leaseEscalationPct/100)).toLocaleString()}/mo`]]:[] ),
                 ].map(([label,val])=>(
